@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli test test-coverage bench clean fmt lint vet help test-api load-test run-server
+.PHONY: all run build build-cli install-cli test test-coverage bench clean fmt lint vet help test-api load-test run-server
 
 # Variables
 BINARY_NAME=kvstore
@@ -52,6 +52,11 @@ load-test:
 	@echo "Done!"
 	@curl -s http://localhost:8080/stats | jq
 
+install-cli:
+	@echo "Installing kvcli to /usr/local/bin..."
+	@sudo cp bin/kvcli /usr/local/bin/
+	@echo "✓ kvcli installed successfully"
+
 build-cli:
 	@echo "Building CLI..."
 	@mkdir -p bin
@@ -84,6 +89,7 @@ help:
 	@echo "  make run             - Run server locally"
 	@echo "  make build           - Build server binary"
 	@echo "  make build-cli       - Build CLI binary"
+	@echo "  make install-cli     - Install CLI"
 	@echo "  make test            - Run tests with race detector"
 	@echo "  make test-coverage   - Run tests with coverage report"
 	@echo "  make bench           - Run benchmarks"

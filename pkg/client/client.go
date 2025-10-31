@@ -12,13 +12,16 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL     string
+	leaderURL   string // Cached leader URL for writes
+	httpClient  *http.Client
+	maxRedirects int
 }
 
 type Config struct {
-	BaseURL string
-	Timeout time.Duration
+	BaseURL      string
+	Timeout      time.Duration
+	MaxRedirects int // Max redirects to follow (default: 3)
 }
 
 type ListResponse struct {
@@ -52,11 +55,20 @@ func NewClient(config Config) *Client {
 	if config.Timeout == 0 {
 		config.Timeout = 10 * time.Second
 	}
+	if config.MaxRedirects == 0 {
+		config.MaxRedirects = 3
+	}
 
 	return &Client{
-		baseURL: config.BaseURL,
+		baseURL:      config.BaseURL,
+		leaderURL:    config.BaseURL, // Initially assume baseURL is leader
+		maxRedirects: config.MaxRedirects,
 		httpClient: &http.Client{
 			Timeout: config.Timeout,
+			// Disable automatic redirects - we handle them manually
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 }
@@ -92,45 +104,83 @@ func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 func (c *Client) Put(ctx context.Context, key string, value []byte) error {
-	url := fmt.Sprintf("%s/keys/%s", c.baseURL, url.PathEscape(key))
+	// Try leader first if we know it
+	targetURL := c.leaderURL
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(value))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	for attempt := 0; attempt < c.maxRedirects; attempt++ {
+		url := fmt.Sprintf("%s/keys/%s", targetURL, url.PathEscape(key))
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(value))
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		// Handle redirect to leader
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			leaderAddr := resp.Header.Get("X-Raft-Leader")
+			if leaderAddr != "" {
+				// Cache leader for future requests
+				c.leaderURL = "http://" + leaderAddr
+				targetURL = c.leaderURL
+				continue // Retry with leader
+			}
+			return fmt.Errorf("redirect without leader address")
+		}
+
+		if resp.StatusCode != http.StatusCreated {
+			return c.parseError(resp)
+		}
+
+		return nil
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return c.parseError(resp)
-	}
-
-	return nil
+	return fmt.Errorf("max redirects exceeded (%d)", c.maxRedirects)
 }
 
 func (c *Client) Delete(ctx context.Context, key string) error {
-	url := fmt.Sprintf("%s/keys/%s", c.baseURL, url.PathEscape(key))
+	// Try leader first if we know it
+	targetURL := c.leaderURL
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	for attempt := 0; attempt < c.maxRedirects; attempt++ {
+		url := fmt.Sprintf("%s/keys/%s", targetURL, url.PathEscape(key))
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		// Handle redirect to leader
+		if resp.StatusCode == http.StatusTemporaryRedirect {
+			leaderAddr := resp.Header.Get("X-Raft-Leader")
+			if leaderAddr != "" {
+				// Cache leader for future requests
+				c.leaderURL = "http://" + leaderAddr
+				targetURL = c.leaderURL
+				continue // Retry with leader
+			}
+			return fmt.Errorf("redirect without leader address")
+		}
+
+		if resp.StatusCode != http.StatusNoContent {
+			return c.parseError(resp)
+		}
+
+		return nil
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		return c.parseError(resp)
-	}
-
-	return nil
+	return fmt.Errorf("max redirects exceeded (%d)", c.maxRedirects)
 }
 
 func (c *Client) List(ctx context.Context, prefix string, limit int) (*ListResponse, error) {
@@ -273,6 +323,21 @@ func (c *Client) Snapshot(ctx context.Context) (*SnapshotResponse, error) {
 	}
 
 	return &snapshotResp, nil
+}
+
+// GetLeaderURL returns the cached leader URL
+func (c *Client) GetLeaderURL() string {
+	return c.leaderURL
+}
+
+// SetLeaderURL manually sets the leader URL (useful for testing)
+func (c *Client) SetLeaderURL(leaderURL string) {
+	c.leaderURL = leaderURL
+}
+
+// ResetLeaderCache resets the cached leader to the base URL
+func (c *Client) ResetLeaderCache() {
+	c.leaderURL = c.baseURL
 }
 
 func (c *Client) parseError(resp *http.Response) error {

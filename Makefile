@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli install-cli test test-coverage bench clean fmt lint vet help test-api load-test run-server
+.PHONY: all run build build-cli install-cli test test-coverage bench clean fmt lint vet help test-api load-test run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api
 
 # Variables
 BINARY_NAME=kvstore
@@ -84,17 +84,114 @@ clean:
 	@echo "Cleaning..."
 	rm -rf bin/ coverage.out coverage.html cpu.out mem.out data/
 
+# Raft cluster targets
+raft-cluster: build
+	@echo "Starting 3-node Raft cluster..."
+	@./scripts/start-cluster.sh
+
+raft-stop:
+	@echo "Stopping Raft cluster..."
+	@./scripts/stop-cluster.sh
+
+raft-node1: build
+	@echo "Starting node1 (bootstrap)..."
+	@mkdir -p data/node1/raft logs
+	./bin/kvstore \
+		--raft \
+		--node-id=node1 \
+		--http-addr=:8081 \
+		--raft-addr=127.0.0.1:7001 \
+		--raft-dir=./data/node1/raft \
+		--bootstrap \
+		--log-level=info
+
+raft-node2: build
+	@echo "Starting node2..."
+	@mkdir -p data/node2/raft logs
+	./bin/kvstore \
+		--raft \
+		--node-id=node2 \
+		--http-addr=:8082 \
+		--raft-addr=127.0.0.1:7002 \
+		--raft-dir=./data/node2/raft \
+		--log-level=info
+
+raft-node3: build
+	@echo "Starting node3..."
+	@mkdir -p data/node3/raft logs
+	./bin/kvstore \
+		--raft \
+		--node-id=node3 \
+		--http-addr=:8083 \
+		--raft-addr=127.0.0.1:7003 \
+		--raft-dir=./data/node3/raft \
+		--log-level=info
+
+raft-status:
+	@echo "Checking cluster status..."
+	@echo "\n1. Cluster nodes:"
+	@curl -s http://localhost:8081/cluster/nodes | jq
+	@echo "\n2. Current leader:"
+	@curl -s http://localhost:8081/cluster/leader | jq
+	@echo "\n3. Node1 health:"
+	@curl -s http://localhost:8081/health | jq
+	@echo "\n4. Node2 health:"
+	@curl -s http://localhost:8082/health | jq
+	@echo "\n5. Node3 health:"
+	@curl -s http://localhost:8083/health | jq
+
+raft-test-api:
+	@echo "Testing Raft cluster API..."
+	@echo "\n1. Writing to node1 (may redirect):"
+	@curl -s -X PUT -d "Alice" http://localhost:8081/keys/user:1 && echo ""
+	@echo "\n2. Writing to node2 (will redirect to leader):"
+	@curl -s -X PUT -d "Bob" http://localhost:8082/keys/user:2 && echo ""
+	@echo "\n3. Reading from node1:"
+	@curl -s http://localhost:8081/keys/user:1
+	@echo "\n4. Reading from node2:"
+	@curl -s http://localhost:8082/keys/user:2
+	@echo "\n5. Reading from node3:"
+	@curl -s http://localhost:8083/keys/user:1
+	@echo "\n6. List keys from any node:"
+	@curl -s "http://localhost:8081/keys?prefix=user" | jq
+	@echo "\n7. Cluster stats from leader:"
+	@curl -s http://localhost:8081/stats | jq
+
 help:
 	@echo "Available targets:"
-	@echo "  make run             - Run server locally"
+	@echo ""
+	@echo "Single-node mode:"
+	@echo "  make run             - Run server locally (single-node)"
+	@echo "  make run-server      - Run HTTP server (single-node)"
+	@echo "  make test-api        - Test HTTP API (single-node)"
+	@echo "  make load-test       - Load test HTTP API (single-node)"
+	@echo ""
+	@echo "Raft cluster mode:"
+	@echo "  make raft-cluster    - Start 3-node Raft cluster (automated)"
+	@echo "  make raft-stop       - Stop Raft cluster"
+	@echo "  make raft-node1      - Start node1 manually (bootstrap)"
+	@echo "  make raft-node2      - Start node2 manually"
+	@echo "  make raft-node3      - Start node3 manually"
+	@echo "  make raft-status     - Check cluster status"
+	@echo "  make raft-test-api   - Test Raft cluster API"
+	@echo ""
+	@echo "Build & test:"
 	@echo "  make build           - Build server binary"
 	@echo "  make build-cli       - Build CLI binary"
-	@echo "  make install-cli     - Install CLI"
+	@echo "  make install-cli     - Install CLI to /usr/local/bin"
 	@echo "  make test            - Run tests with race detector"
 	@echo "  make test-coverage   - Run tests with coverage report"
 	@echo "  make bench           - Run benchmarks"
-	@echo "  make clean           - Clean build artifacts"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  make clean           - Clean build artifacts and data"
 	@echo "  make fmt             - Format code"
-	@echo "  make run-serve       - Run HTTP server"
-	@echo "  make test-api        - Test HTTP API"
-	@echo "  make load-test       - Load Test HTTP API"
+	@echo ""
+	@echo "Examples:"
+	@echo "  # Start cluster and test"
+	@echo "  make raft-cluster && sleep 5 && make raft-test-api"
+	@echo ""
+	@echo "  # Manual 3-node setup (in separate terminals)"
+	@echo "  make raft-node1  # Terminal 1"
+	@echo "  make raft-node2  # Terminal 2"
+	@echo "  make raft-node3  # Terminal 3"

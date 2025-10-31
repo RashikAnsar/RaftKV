@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/server"
 	"github.com/RashikAnsar/raftkv/internal/storage"
@@ -24,6 +25,14 @@ type Config struct {
 	DataDir       string
 	SyncOnWrite   bool
 	SnapshotEvery int
+
+	// Raft config
+	EnableRaft bool
+	NodeID     string
+	RaftAddr   string
+	RaftDir    string
+	Bootstrap  bool
+	JoinAddr   string
 
 	// Observability
 	LogLevel string
@@ -54,53 +63,126 @@ func main() {
 		zap.String("version", "1.0.0"),
 		zap.String("http_addr", config.HTTPAddr),
 		zap.String("data_dir", config.DataDir),
+		zap.Bool("raft_enabled", config.EnableRaft),
 	)
 
 	// Create storage
-	store, err := storage.NewDurableStore(storage.DurableStoreConfig{
-		DataDir:       config.DataDir,
-		SyncOnWrite:   config.SyncOnWrite,
-		SnapshotEvery: config.SnapshotEvery,
-	})
-	if err != nil {
-		logger.Fatal("Failed to create store", zap.Error(err))
-	}
-	defer store.Close()
+	var store storage.Store
 
-	logger.Info("Storage initialized",
-		zap.String("data_dir", config.DataDir),
-		zap.Bool("sync_on_write", config.SyncOnWrite),
-		zap.Int("snapshot_every", config.SnapshotEvery),
-	)
+	if config.EnableRaft {
+		// Use in-memory store with Raft (Raft provides durability)
+		store = storage.NewMemoryStore()
+		logger.Info("Using in-memory storage with Raft")
+	} else {
+		// Use durable store without Raft
+		durableStore, err := storage.NewDurableStore(storage.DurableStoreConfig{
+			DataDir:       config.DataDir,
+			SyncOnWrite:   config.SyncOnWrite,
+			SnapshotEvery: config.SnapshotEvery,
+		})
+		if err != nil {
+			logger.Fatal("Failed to create store", zap.Error(err))
+		}
+		store = durableStore
+		defer durableStore.Close()
+
+		logger.Info("Storage initialized (single-node mode)",
+			zap.String("data_dir", config.DataDir),
+			zap.Bool("sync_on_write", config.SyncOnWrite),
+		)
+	}
+
+	// Create Raft node if enabled
+	var raftNode *consensus.RaftNode
+	if config.EnableRaft {
+		raftNode, err = consensus.NewRaftNode(consensus.RaftConfig{
+			NodeID:    config.NodeID,
+			RaftAddr:  config.RaftAddr,
+			RaftDir:   config.RaftDir,
+			Bootstrap: config.Bootstrap,
+			JoinAddr:  config.JoinAddr,
+			Store:     store,
+			Logger:    logger.Logger,
+		})
+		if err != nil {
+			logger.Fatal("Failed to create Raft node", zap.Error(err))
+		}
+		defer raftNode.Shutdown()
+
+		logger.Info("Raft node created",
+			zap.String("node_id", config.NodeID),
+			zap.String("raft_addr", config.RaftAddr),
+			zap.Bool("bootstrap", config.Bootstrap),
+		)
+
+		// Wait for leader election
+		if err := raftNode.WaitForLeader(30 * time.Second); err != nil {
+			logger.Fatal("Failed to elect leader", zap.Error(err))
+		}
+
+		logger.Info("Raft cluster ready",
+			zap.String("state", raftNode.GetState()),
+			zap.String("leader", raftNode.GetLeader()),
+		)
+	}
 
 	// Create metrics
 	metrics := observability.NewMetrics()
 
 	// Create HTTP server
-	httpServer := server.NewHTTPServer(server.HTTPServerConfig{
-		Addr:            config.HTTPAddr,
-		Store:           store,
-		Logger:          logger,
-		Metrics:         metrics,
-		ReadTimeout:     config.ReadTimeout,
-		WriteTimeout:    config.WriteTimeout,
-		MaxRequestSize:  config.MaxRequestSize,
-		EnableRateLimit: config.EnableRateLimit,
-		RateLimit:       config.RateLimit,
-	})
+	if config.EnableRaft {
+		// Use Raft-aware HTTP server
+		raftHTTPServer := server.NewRaftHTTPServer(server.RaftHTTPServerConfig{
+			Addr:            config.HTTPAddr,
+			RaftNode:        raftNode,
+			Logger:          logger,
+			Metrics:         metrics,
+			ReadTimeout:     config.ReadTimeout,
+			WriteTimeout:    config.WriteTimeout,
+			MaxRequestSize:  config.MaxRequestSize,
+			EnableRateLimit: config.EnableRateLimit,
+			RateLimit:       config.RateLimit,
+		})
 
-	// Start server in goroutine
-	go func() {
-		if err := httpServer.Start(); err != nil {
-			logger.Fatal("HTTP server failed", zap.Error(err))
-		}
-	}()
+		// Start server in goroutine
+		go func() {
+			if err := raftHTTPServer.Start(); err != nil {
+				logger.Fatal("Raft HTTP server failed", zap.Error(err))
+			}
+		}()
 
-	logger.Info("HTTP server started", zap.String("addr", config.HTTPAddr))
-	logger.Info("RaftKV is ready to accept requests")
+		logger.Info("Raft HTTP server started", zap.String("addr", config.HTTPAddr))
+		logger.Info("RaftKV is ready to accept requests (cluster mode)")
 
-	// Wait for interrupt signal
-	waitForShutdown(logger, httpServer, store)
+		// Wait for interrupt signal
+		waitForShutdownRaft(logger, raftHTTPServer, raftNode)
+	} else {
+		// Use standard HTTP server (single-node mode)
+		httpServer := server.NewHTTPServer(server.HTTPServerConfig{
+			Addr:            config.HTTPAddr,
+			Store:           store,
+			Logger:          logger,
+			Metrics:         metrics,
+			ReadTimeout:     config.ReadTimeout,
+			WriteTimeout:    config.WriteTimeout,
+			MaxRequestSize:  config.MaxRequestSize,
+			EnableRateLimit: config.EnableRateLimit,
+			RateLimit:       config.RateLimit,
+		})
+
+		// Start server in goroutine
+		go func() {
+			if err := httpServer.Start(); err != nil {
+				logger.Fatal("HTTP server failed", zap.Error(err))
+			}
+		}()
+
+		logger.Info("HTTP server started", zap.String("addr", config.HTTPAddr))
+		logger.Info("RaftKV is ready to accept requests (single-node mode)")
+
+		// Wait for interrupt signal
+		waitForShutdown(logger, httpServer)
+	}
 }
 
 func parseFlags() Config {
@@ -113,6 +195,14 @@ func parseFlags() Config {
 	flag.StringVar(&config.DataDir, "data-dir", "./data", "Data directory")
 	flag.BoolVar(&config.SyncOnWrite, "sync-on-write", true, "Sync writes to disk (durable but slower)")
 	flag.IntVar(&config.SnapshotEvery, "snapshot-every", 10000, "Snapshot every N operations")
+
+	// Raft flags
+	flag.BoolVar(&config.EnableRaft, "raft", false, "Enable Raft consensus")
+	flag.StringVar(&config.NodeID, "node-id", "node1", "Unique node ID")
+	flag.StringVar(&config.RaftAddr, "raft-addr", "localhost:7000", "Raft bind address")
+	flag.StringVar(&config.RaftDir, "raft-dir", "./data/raft", "Raft data directory")
+	flag.BoolVar(&config.Bootstrap, "bootstrap", false, "Bootstrap new cluster")
+	flag.StringVar(&config.JoinAddr, "join", "", "Join existing cluster at this address")
 
 	// Observability flags
 	flag.StringVar(&config.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
@@ -132,7 +222,7 @@ func parseFlags() Config {
 	return config
 }
 
-func waitForShutdown(logger *observability.Logger, httpServer *server.HTTPServer, store storage.Store) {
+func waitForShutdown(logger *observability.Logger, httpServer *server.HTTPServer) {
 	// Create signal channel
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -151,10 +241,32 @@ func waitForShutdown(logger *observability.Logger, httpServer *server.HTTPServer
 		logger.Error("HTTP server shutdown error", zap.Error(err))
 	}
 
-	// Close store
-	logger.Info("Closing store...")
-	if err := store.Close(); err != nil {
-		logger.Error("Store close error", zap.Error(err))
+	logger.Info("Shutdown complete")
+}
+
+func waitForShutdownRaft(logger *observability.Logger, raftHTTPServer *server.RaftHTTPServer, raftNode *consensus.RaftNode) {
+	// Create signal channel
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Wait for signal
+	sig := <-sigChan
+	logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
+
+	// Create shutdown context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Shutdown HTTP server
+	logger.Info("Shutting down Raft HTTP server...")
+	if err := raftHTTPServer.Shutdown(ctx); err != nil {
+		logger.Error("Raft HTTP server shutdown error", zap.Error(err))
+	}
+
+	// Shutdown Raft node
+	logger.Info("Shutting down Raft node...")
+	if err := raftNode.Shutdown(); err != nil {
+		logger.Error("Raft shutdown error", zap.Error(err))
 	}
 
 	logger.Info("Shutdown complete")

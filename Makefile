@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli install-cli test test-coverage bench clean fmt lint vet help test-api load-test run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api
+.PHONY: all run build build-cli install-cli test test-coverage bench bench-grpc bench-http bench-compare clean fmt lint vet help test-api load-test run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api proto
 
 # Variables
 BINARY_NAME=kvstore
@@ -8,6 +8,14 @@ GOFLAGS=-v
 
 # commands
 all: test build
+
+# Proto targets
+proto:
+	@echo "Generating protobuf code..."
+	@protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative \
+		api/proto/kv.proto
+	@echo "Protobuf code generated"
 
 run:
 	@echo "Starting server..."
@@ -55,7 +63,7 @@ load-test:
 install-cli:
 	@echo "Installing kvcli to /usr/local/bin..."
 	@sudo cp bin/kvcli /usr/local/bin/
-	@echo "✓ kvcli installed successfully"
+	@echo "kvcli installed successfully"
 
 build-cli:
 	@echo "Building CLI..."
@@ -73,8 +81,29 @@ test-coverage:
 	@echo "Coverage report: coverage.html"
 
 bench:
-	@echo "Running benchmarks..."
+	@echo "Running storage benchmarks..."
 	$(GO) test -bench=. -benchmem ./internal/storage
+
+bench-grpc:
+	@echo "Running gRPC server benchmarks..."
+	$(GO) test ./internal/server -bench=BenchmarkGRPCServer -benchmem -run=^$ -timeout 60s
+
+bench-http:
+	@echo "Running HTTP server benchmarks..."
+	$(GO) test ./internal/server -bench=BenchmarkHTTPServer -benchmem -run=^$ -timeout 60s
+
+bench-compare:
+	@echo "Running benchmark comparison (gRPC vs HTTP)..."
+	@echo "=== gRPC Benchmarks ===" > benchmark_results.txt
+	@$(GO) test ./internal/server -bench=BenchmarkGRPCServer -benchmem -run=^$ 2>&1 | grep -E "^(Benchmark|goos|goarch|cpu)" >> benchmark_results.txt
+	@echo "" >> benchmark_results.txt
+	@echo "=== HTTP Benchmarks ===" >> benchmark_results.txt
+	@$(GO) test ./internal/server -bench=BenchmarkHTTPServer -benchmem -run=^$ 2>&1 | grep -E "^(Benchmark|goos|goarch|cpu)" >> benchmark_results.txt
+	@echo ""
+	@cat benchmark_results.txt
+	@echo ""
+	@echo "Results saved to benchmark_results.txt"
+	@echo "See BENCHMARK_COMPARISON.md for detailed analysis"
 
 fmt:
 	@echo "Formatting code..."
@@ -176,12 +205,16 @@ help:
 	@echo "  make raft-test-api   - Test Raft cluster API"
 	@echo ""
 	@echo "Build & test:"
+	@echo "  make proto           - Generate protobuf code from .proto files"
 	@echo "  make build           - Build server binary"
 	@echo "  make build-cli       - Build CLI binary"
 	@echo "  make install-cli     - Install CLI to /usr/local/bin"
 	@echo "  make test            - Run tests with race detector"
 	@echo "  make test-coverage   - Run tests with coverage report"
-	@echo "  make bench           - Run benchmarks"
+	@echo "  make bench           - Run storage benchmarks"
+	@echo "  make bench-grpc      - Run gRPC server benchmarks"
+	@echo "  make bench-http      - Run HTTP server benchmarks"
+	@echo "  make bench-compare   - Compare gRPC vs HTTP performance"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean           - Clean build artifacts and data"

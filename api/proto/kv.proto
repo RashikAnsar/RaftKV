@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package kvstore;
+
+option go_package = "github.com/RashikAnsar/raftkv/api/proto;proto";
+
+// KVStore service provides high-performance RPC for key-value operations
+service KVStore {
+  // Get retrieves the value for a given key
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Put stores a key-value pair
+  rpc Put(PutRequest) returns (PutResponse);
+
+  // Delete removes a key-value pair
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+
+  // List returns keys matching a prefix
+  rpc List(ListRequest) returns (ListResponse);
+
+  // GetStats returns store statistics
+  rpc GetStats(StatsRequest) returns (StatsResponse);
+
+  // GetLeader returns the current Raft leader
+  rpc GetLeader(LeaderRequest) returns (LeaderResponse);
+}
+
+// GetRequest contains the key to retrieve
+message GetRequest {
+  string key = 1;
+  // If true, ensures linearizable read from leader
+  bool consistent = 2;
+}
+
+// GetResponse contains the retrieved value
+message GetResponse {
+  bytes value = 1;
+  bool found = 2;
+  // If read from follower, indicates potential staleness
+  bool from_leader = 3;
+}
+
+// PutRequest contains the key-value pair to store
+message PutRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+// PutResponse confirms the put operation
+message PutResponse {
+  bool success = 1;
+  string error = 2;
+  // The leader that processed the request
+  string leader = 3;
+}
+
+// DeleteRequest contains the key to delete
+message DeleteRequest {
+  string key = 1;
+}
+
+// DeleteResponse confirms the delete operation
+message DeleteResponse {
+  bool success = 1;
+  string error = 2;
+  // The leader that processed the request
+  string leader = 3;
+}
+
+// ListRequest contains parameters for listing keys
+message ListRequest {
+  string prefix = 1;
+  int32 limit = 2; // Max number of keys to return (0 = all)
+}
+
+// ListResponse contains the matching keys
+message ListResponse {
+  repeated string keys = 1;
+  int32 total = 2; // Total matching keys (may be > len(keys) if limited)
+}
+
+// StatsRequest requests store statistics
+message StatsRequest {}
+
+// StatsResponse contains store statistics
+message StatsResponse {
+  uint64 key_count = 1;
+  uint64 get_count = 2;
+  uint64 put_count = 3;
+  uint64 delete_count = 4;
+  string raft_state = 5; // "Leader", "Follower", "Candidate"
+  string raft_leader = 6;
+  uint64 raft_term = 7;
+  uint64 raft_last_index = 8;
+}
+
+// LeaderRequest requests the current leader
+message LeaderRequest {}
+
+// LeaderResponse contains the current leader information
+message LeaderResponse {
+  string leader_id = 1;
+  string leader_address = 2;
+  bool is_leader = 3; // True if this node is the leader
+}

@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli install-cli test test-coverage bench bench-grpc bench-http bench-compare clean fmt lint vet help test-api load-test run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api proto
+.PHONY: all run build build-cli install-cli test test-coverage bench bench-grpc bench-http bench-compare clean fmt lint vet help test-api load-test run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc test-cli-auto-config quickstart proto
 
 # Variables
 BINARY_NAME=kvstore
@@ -192,8 +192,67 @@ raft-test-api:
 	@echo "\n7. Cluster stats from leader:"
 	@curl -s http://localhost:8081/stats | jq
 
+raft-test-grpc: build-cli
+	@echo "Testing Raft cluster via gRPC..."
+	@echo "\n=== Testing with HTTP port (auto-converts to gRPC) ==="
+	@echo "1. Put via gRPC (using HTTP port 8081):"
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 put user:grpc:1 "Alice"
+	@echo "\n2. Get via gRPC:"
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 get user:grpc:1
+	@echo "\n3. Put to different node (auto-discovery):"
+	@./bin/kvcli --protocol=grpc --server=localhost:8082 put user:grpc:2 "Bob"
+	@echo "\n4. List via gRPC:"
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 list --prefix=user:grpc
+	@echo "\n5. Stats via gRPC:"
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 stats
+	@echo "\n=== Testing with gRPC port directly ==="
+	@echo "6. Put via gRPC (using gRPC port 9091):"
+	@./bin/kvcli --protocol=grpc --server=localhost:9091 put user:grpc:3 "Charlie"
+	@echo "\n7. Get via gRPC:"
+	@./bin/kvcli --protocol=grpc --server=localhost:9091 get user:grpc:3
+
+test-cli-auto-config: build-cli
+	@echo "Testing CLI auto-configuration..."
+	@./scripts/test-cli-auto-config.sh
+
+quickstart: build build-cli
+	@echo "🚀 Starting RaftKV quickstart..."
+	@echo ""
+	@$(MAKE) raft-cluster
+	@echo ""
+	@echo "Waiting for cluster to be ready (5 seconds)..."
+	@sleep 5
+	@echo ""
+	@echo "=== Testing cluster with CLI (gRPC) ==="
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 put demo:name "RaftKV"
+	@echo ""
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 put demo:version "1.0"
+	@echo ""
+	@echo "Getting values back..."
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 get demo:name
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 get demo:version
+	@echo ""
+	@echo "Cluster statistics:"
+	@./bin/kvcli --protocol=grpc --server=localhost:8081 stats
+	@echo ""
+	@echo "RaftKV is ready!"
+	@echo ""
+	@echo "Cluster nodes:"
+	@echo "  Node1: http://localhost:8081 (HTTP), localhost:9091 (gRPC)"
+	@echo "  Node2: http://localhost:8082 (HTTP), localhost:9092 (gRPC)"
+	@echo "  Node3: http://localhost:8083 (HTTP), localhost:9093 (gRPC)"
+	@echo ""
+	@echo "Try commands:"
+	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 put key value"
+	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 get key"
+	@echo ""
+	@echo "To stop: make raft-stop"
+
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Quick Start:"
+	@echo "  make quickstart      - Build, start cluster, and test (one command!)"
 	@echo ""
 	@echo "Single-node mode:"
 	@echo "  make run             - Run server locally (single-node)"
@@ -208,7 +267,8 @@ help:
 	@echo "  make raft-node2      - Start node2 manually"
 	@echo "  make raft-node3      - Start node3 manually"
 	@echo "  make raft-status     - Check cluster status"
-	@echo "  make raft-test-api   - Test Raft cluster API"
+	@echo "  make raft-test-api   - Test Raft cluster via HTTP API"
+	@echo "  make raft-test-grpc  - Test Raft cluster via gRPC (with auto-config)"
 	@echo ""
 	@echo "Build & test:"
 	@echo "  make proto           - Generate protobuf code from .proto files"
@@ -217,6 +277,7 @@ help:
 	@echo "  make install-cli     - Install CLI to /usr/local/bin"
 	@echo "  make test            - Run tests with race detector"
 	@echo "  make test-coverage   - Run tests with coverage report"
+	@echo "  make test-cli-auto-config - Test CLI auto-configuration feature"
 	@echo "  make bench           - Run storage benchmarks"
 	@echo "  make bench-grpc      - Run gRPC server benchmarks"
 	@echo "  make bench-http      - Run HTTP server benchmarks"
@@ -227,10 +288,20 @@ help:
 	@echo "  make fmt             - Format code"
 	@echo ""
 	@echo "Examples:"
+	@echo "  # Quickstart (recommended)"
+	@echo "  make quickstart"
+	@echo ""
 	@echo "  # Start cluster and test"
-	@echo "  make raft-cluster && sleep 5 && make raft-test-api"
+	@echo "  make raft-cluster && sleep 5 && make raft-test-grpc"
+	@echo ""
+	@echo "  # Test CLI auto-configuration"
+	@echo "  make raft-cluster && sleep 5 && make test-cli-auto-config"
 	@echo ""
 	@echo "  # Manual 3-node setup (in separate terminals)"
 	@echo "  make raft-node1  # Terminal 1"
 	@echo "  make raft-node2  # Terminal 2"
 	@echo "  make raft-node3  # Terminal 3"
+	@echo ""
+	@echo "  # Use CLI with auto-configuration"
+	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 put key value"
+	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 get key"

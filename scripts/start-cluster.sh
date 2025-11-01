@@ -7,9 +7,14 @@ set -e
 echo "Building kvstore binary..."
 go build -o bin/kvstore ./cmd/kvstore
 
-# Clean up old data
+# Create necessary directories
+echo "Creating directories..."
+mkdir -p data/node1/raft data/node2/raft data/node3/raft logs
+
+# Clean up old data (keep directory structure)
 echo "Cleaning up old data..."
-rm -rf data/node1 data/node2 data/node3
+rm -rf data/node1/raft/* data/node2/raft/* data/node3/raft/*
+rm -f logs/*.log logs/cluster.pids
 
 # Start node 1 (bootstrap)
 echo "Starting node1 (bootstrap)..."

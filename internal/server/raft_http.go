@@ -371,8 +371,8 @@ func (s *RaftHTTPServer) handleNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := make([]map[string]interface{}, len(servers))
 	for i, server := range servers {
 		nodes[i] = map[string]interface{}{
-			"id":      string(server.ID),
-			"address": string(server.Address),
+			"id":       string(server.ID),
+			"address":  string(server.Address),
 			"suffrage": server.Suffrage.String(),
 		}
 	}
@@ -453,19 +453,19 @@ func (s *RaftHTTPServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 		"state":   s.raft.GetState(),
 		"leader":  s.raft.GetLeader(),
 		"endpoints": map[string]string{
-			"GET /keys/{key}":        "Get value",
-			"PUT /keys/{key}":        "Put value (leader only)",
-			"DELETE /keys/{key}":     "Delete key (leader only)",
-			"GET /keys?prefix=":      "List keys",
-			"POST /cluster/join":     "Add node to cluster",
-			"POST /cluster/remove":   "Remove node from cluster",
-			"GET /cluster/nodes":     "List cluster nodes",
-			"GET /cluster/leader":    "Get leader info",
-			"POST /admin/snapshot":   "Create Raft snapshot",
-			"GET /health":            "Health check",
-			"GET /ready":             "Readiness check",
-			"GET /stats":             "Statistics",
-			"GET /metrics":           "Prometheus metrics",
+			"GET /keys/{key}":      "Get value",
+			"PUT /keys/{key}":      "Put value (leader only)",
+			"DELETE /keys/{key}":   "Delete key (leader only)",
+			"GET /keys?prefix=":    "List keys",
+			"POST /cluster/join":   "Add node to cluster",
+			"POST /cluster/remove": "Remove node from cluster",
+			"GET /cluster/nodes":   "List cluster nodes",
+			"GET /cluster/leader":  "Get leader info",
+			"POST /admin/snapshot": "Create Raft snapshot",
+			"GET /health":          "Health check",
+			"GET /ready":           "Readiness check",
+			"GET /stats":           "Statistics",
+			"GET /metrics":         "Prometheus metrics",
 		},
 	})
 }

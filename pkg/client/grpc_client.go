@@ -138,6 +138,15 @@ func (c *GRPCClient) discoverLeader(ctx context.Context) (string, error) {
 			continue
 		}
 
+		// If this server is the leader, use its address
+		if resp.IsLeader {
+			c.leaderMu.Lock()
+			c.leaderAddr = addr // Use the server we connected to
+			c.leaderMu.Unlock()
+			return addr, nil
+		}
+
+		// If this server knows the leader's address, use it
 		if resp.LeaderAddress != "" {
 			c.leaderMu.Lock()
 			c.leaderAddr = resp.LeaderAddress
@@ -163,7 +172,22 @@ func (c *GRPCClient) getLeaderClient(ctx context.Context) (pb.KVStoreClient, err
 		}
 	}
 
-	// Discover leader
+	// If auto-retry is disabled, try the first configured server directly
+	// This is useful for CLI operations where we don't need automatic failover
+	if !c.enableAutoRetry && len(c.servers) > 0 {
+		// Try connecting directly to the first server
+		client, err := c.getClient(c.servers[0])
+		if err == nil {
+			// Cache this as the leader for subsequent requests
+			c.leaderMu.Lock()
+			c.leaderAddr = c.servers[0]
+			c.leaderMu.Unlock()
+			return client, nil
+		}
+		return nil, fmt.Errorf("failed to connect to server %s: %w", c.servers[0], err)
+	}
+
+	// Discover leader (only if auto-retry is enabled)
 	leaderAddr, err := c.discoverLeader(ctx)
 	if err != nil {
 		return nil, err

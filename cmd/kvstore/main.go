@@ -19,7 +19,9 @@ import (
 
 type Config struct {
 	// Server config
-	HTTPAddr string
+	HTTPAddr   string
+	GRPCAddr   string
+	EnableGRPC bool
 
 	// Storage config
 	DataDir       string
@@ -62,6 +64,8 @@ func main() {
 	logger.Info("Starting RaftKV",
 		zap.String("version", "1.0.0"),
 		zap.String("http_addr", config.HTTPAddr),
+		zap.String("grpc_addr", config.GRPCAddr),
+		zap.Bool("grpc_enabled", config.EnableGRPC),
 		zap.String("data_dir", config.DataDir),
 		zap.Bool("raft_enabled", config.EnableRaft),
 	)
@@ -129,7 +133,7 @@ func main() {
 	// Create metrics
 	metrics := observability.NewMetrics()
 
-	// Create HTTP server
+	// Create servers
 	if config.EnableRaft {
 		// Use Raft-aware HTTP server
 		raftHTTPServer := server.NewRaftHTTPServer(server.RaftHTTPServerConfig{
@@ -144,7 +148,7 @@ func main() {
 			RateLimit:       config.RateLimit,
 		})
 
-		// Start server in goroutine
+		// Start HTTP server in goroutine
 		go func() {
 			if err := raftHTTPServer.Start(); err != nil {
 				logger.Fatal("Raft HTTP server failed", zap.Error(err))
@@ -152,10 +156,32 @@ func main() {
 		}()
 
 		logger.Info("Raft HTTP server started", zap.String("addr", config.HTTPAddr))
-		logger.Info("RaftKV is ready to accept requests (cluster mode)")
+
+		// Start gRPC server if enabled
+		var grpcServer *server.GRPCServer
+		if config.EnableGRPC {
+			grpcServer = server.NewGRPCServer(server.GRPCServerConfig{
+				Addr:     config.GRPCAddr,
+				RaftNode: raftNode,
+				Logger:   logger.Logger,
+				Metrics:  metrics,
+			})
+
+			go func() {
+				if err := grpcServer.Start(); err != nil {
+					logger.Fatal("gRPC server failed", zap.Error(err))
+				}
+			}()
+
+			logger.Info("gRPC server started", zap.String("addr", config.GRPCAddr))
+		}
+
+		logger.Info("RaftKV is ready to accept requests (cluster mode)",
+			zap.Bool("grpc_enabled", config.EnableGRPC),
+		)
 
 		// Wait for interrupt signal
-		waitForShutdownRaft(logger, raftHTTPServer, raftNode)
+		waitForShutdownRaft(logger, raftHTTPServer, raftNode, grpcServer)
 	} else {
 		// Use standard HTTP server (single-node mode)
 		httpServer := server.NewHTTPServer(server.HTTPServerConfig{
@@ -190,6 +216,8 @@ func parseFlags() Config {
 
 	// Server flags
 	flag.StringVar(&config.HTTPAddr, "http-addr", ":8080", "HTTP server address")
+	flag.StringVar(&config.GRPCAddr, "grpc-addr", ":9090", "gRPC server address")
+	flag.BoolVar(&config.EnableGRPC, "grpc", false, "Enable gRPC server")
 
 	// Storage flags
 	flag.StringVar(&config.DataDir, "data-dir", "./data", "Data directory")
@@ -244,7 +272,7 @@ func waitForShutdown(logger *observability.Logger, httpServer *server.HTTPServer
 	logger.Info("Shutdown complete")
 }
 
-func waitForShutdownRaft(logger *observability.Logger, raftHTTPServer *server.RaftHTTPServer, raftNode *consensus.RaftNode) {
+func waitForShutdownRaft(logger *observability.Logger, raftHTTPServer *server.RaftHTTPServer, raftNode *consensus.RaftNode, grpcServer *server.GRPCServer) {
 	// Create signal channel
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -261,6 +289,12 @@ func waitForShutdownRaft(logger *observability.Logger, raftHTTPServer *server.Ra
 	logger.Info("Shutting down Raft HTTP server...")
 	if err := raftHTTPServer.Shutdown(ctx); err != nil {
 		logger.Error("Raft HTTP server shutdown error", zap.Error(err))
+	}
+
+	// Shutdown gRPC server if running
+	if grpcServer != nil {
+		logger.Info("Shutting down gRPC server...")
+		grpcServer.Stop()
 	}
 
 	// Shutdown Raft node

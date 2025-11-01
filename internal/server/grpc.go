@@ -285,16 +285,26 @@ func (s *GRPCServer) GetStats(ctx context.Context, req *pb.StatsRequest) (*pb.St
 
 // GetLeader returns the current Raft leader
 func (s *GRPCServer) GetLeader(ctx context.Context, req *pb.LeaderRequest) (*pb.LeaderResponse, error) {
-	leader := s.raftNode.GetLeader()
 	isLeader := s.raftNode.IsLeader()
 
 	// Get node ID from Raft stats
 	raftStats := s.raftNode.RaftStats()
 	nodeID := raftStats["node_id"]
 
+	// Return gRPC address instead of Raft address
+	// If current instance is the leader, return's own gRPC address
+	// If current instance is the follower, then instance don't know the leader's gRPC address,
+	// so return empty string (client will try all known servers)
+	var grpcLeaderAddr string
+	if isLeader {
+		grpcLeaderAddr = s.addr
+	} else {
+		grpcLeaderAddr = ""
+	}
+
 	return &pb.LeaderResponse{
 		LeaderId:      nodeID,
-		LeaderAddress: leader,
+		LeaderAddress: grpcLeaderAddr, // Return gRPC address, not Raft address
 		IsLeader:      isLeader,
 	}, nil
 }

@@ -123,35 +123,41 @@ raft-stop:
 	@./scripts/stop-cluster.sh
 
 raft-node1: build
-	@echo "Starting node1 (bootstrap)..."
+	@echo "Starting node1 (bootstrap) with gRPC..."
 	@mkdir -p data/node1/raft logs
 	./bin/kvstore \
 		--raft \
+		--grpc \
 		--node-id=node1 \
 		--http-addr=:8081 \
+		--grpc-addr=:9091 \
 		--raft-addr=127.0.0.1:7001 \
 		--raft-dir=./data/node1/raft \
 		--bootstrap \
 		--log-level=info
 
 raft-node2: build
-	@echo "Starting node2..."
+	@echo "Starting node2 with gRPC..."
 	@mkdir -p data/node2/raft logs
 	./bin/kvstore \
 		--raft \
+		--grpc \
 		--node-id=node2 \
 		--http-addr=:8082 \
+		--grpc-addr=:9092 \
 		--raft-addr=127.0.0.1:7002 \
 		--raft-dir=./data/node2/raft \
 		--log-level=info
 
 raft-node3: build
-	@echo "Starting node3..."
+	@echo "Starting node3 with gRPC..."
 	@mkdir -p data/node3/raft logs
 	./bin/kvstore \
 		--raft \
+		--grpc \
 		--node-id=node3 \
 		--http-addr=:8083 \
+		--grpc-addr=:9093 \
 		--raft-addr=127.0.0.1:7003 \
 		--raft-dir=./data/node3/raft \
 		--log-level=info

@@ -12,9 +12,9 @@ import (
 )
 
 type Client struct {
-	baseURL     string
-	leaderURL   string // Cached leader URL for writes
-	httpClient  *http.Client
+	baseURL      string
+	leaderURL    string // Cached leader URL for writes
+	httpClient   *http.Client
 	maxRedirects int
 }
 

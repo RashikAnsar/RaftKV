@@ -15,8 +15,10 @@ rm -rf data/node1 data/node2 data/node3
 echo "Starting node1 (bootstrap)..."
 ./bin/kvstore \
   --raft \
+  --grpc \
   --node-id=node1 \
   --http-addr=:8081 \
+  --grpc-addr=:9091 \
   --raft-addr=127.0.0.1:7001 \
   --raft-dir=./data/node1/raft \
   --bootstrap \
@@ -34,8 +36,10 @@ sleep 3
 echo "Starting node2..."
 ./bin/kvstore \
   --raft \
+  --grpc \
   --node-id=node2 \
   --http-addr=:8082 \
+  --grpc-addr=:9092 \
   --raft-addr=127.0.0.1:7002 \
   --raft-dir=./data/node2/raft \
   --log-level=info \
@@ -48,8 +52,10 @@ echo "Node2 started with PID $NODE2_PID"
 echo "Starting node3..."
 ./bin/kvstore \
   --raft \
+  --grpc \
   --node-id=node3 \
   --http-addr=:8083 \
+  --grpc-addr=:9093 \
   --raft-addr=127.0.0.1:7003 \
   --raft-dir=./data/node3/raft \
   --log-level=info \

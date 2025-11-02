@@ -70,27 +70,26 @@ func main() {
 		zap.Bool("raft_enabled", config.EnableRaft),
 	)
 
-	// Create storage
-	var store storage.Store
+	// Create storage - ALWAYS use DurableStore (unified architecture)
+	durableStore, err := storage.NewDurableStore(storage.DurableStoreConfig{
+		DataDir:       config.DataDir,
+		SyncOnWrite:   config.SyncOnWrite,
+		SnapshotEvery: config.SnapshotEvery,
+	})
+	if err != nil {
+		logger.Fatal("Failed to create store", zap.Error(err))
+	}
+	defer durableStore.Close()
+
+	var store storage.Store = durableStore
 
 	if config.EnableRaft {
-		// Use in-memory store with Raft (Raft provides durability)
-		store = storage.NewMemoryStore()
-		logger.Info("Using in-memory storage with Raft")
+		logger.Info("Storage initialized with DurableStore (Raft cluster mode)",
+			zap.String("data_dir", config.DataDir),
+			zap.Bool("sync_on_write", config.SyncOnWrite),
+		)
 	} else {
-		// Use durable store without Raft
-		durableStore, err := storage.NewDurableStore(storage.DurableStoreConfig{
-			DataDir:       config.DataDir,
-			SyncOnWrite:   config.SyncOnWrite,
-			SnapshotEvery: config.SnapshotEvery,
-		})
-		if err != nil {
-			logger.Fatal("Failed to create store", zap.Error(err))
-		}
-		store = durableStore
-		defer durableStore.Close()
-
-		logger.Info("Storage initialized (single-node mode)",
+		logger.Info("Storage initialized with DurableStore (single-node mode)",
 			zap.String("data_dir", config.DataDir),
 			zap.Bool("sync_on_write", config.SyncOnWrite),
 		)
@@ -105,7 +104,7 @@ func main() {
 			RaftDir:   config.RaftDir,
 			Bootstrap: config.Bootstrap,
 			JoinAddr:  config.JoinAddr,
-			Store:     store,
+			Store:     durableStore, // Pass concrete DurableStore type
 			Logger:    logger.Logger,
 		})
 		if err != nil {

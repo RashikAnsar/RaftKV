@@ -15,6 +15,19 @@ import (
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
+// Helper function to create DurableStore for tests
+func createTestStore(t *testing.T, dir string) *storage.DurableStore {
+	store, err := storage.NewDurableStore(storage.DurableStoreConfig{
+		DataDir:       filepath.Join(dir, "store"),
+		SyncOnWrite:   false, // Faster for tests
+		SnapshotEvery: 1000,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create DurableStore: %v", err)
+	}
+	return store
+}
+
 // TestRaftNode_SingleNode tests basic operations on a single-node cluster
 func TestRaftNode_SingleNode(t *testing.T) {
 	// Create temporary directory for Raft data
@@ -31,7 +44,7 @@ func TestRaftNode_SingleNode(t *testing.T) {
 	}
 
 	// Create storage
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 
 	// Create Raft node
 	node, err := NewRaftNode(RaftConfig{
@@ -105,7 +118,7 @@ func TestRaftNode_MultipleOperations(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logger, _ := zap.NewDevelopment()
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 
 	node, err := NewRaftNode(RaftConfig{
 		NodeID:    "node1",
@@ -172,7 +185,7 @@ func TestRaftNode_Snapshot(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logger, _ := zap.NewDevelopment()
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 
 	node, err := NewRaftNode(RaftConfig{
 		NodeID:    "node1",
@@ -252,7 +265,7 @@ func TestRaftNode_Stats(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logger, _ := zap.NewDevelopment()
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 
 	node, err := NewRaftNode(RaftConfig{
 		NodeID:    "node1",
@@ -299,7 +312,7 @@ func TestRaftNode_GetServers(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logger, _ := zap.NewDevelopment()
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 
 	node, err := NewRaftNode(RaftConfig{
 		NodeID:    "node1",
@@ -335,8 +348,14 @@ func TestRaftNode_GetServers(t *testing.T) {
 
 // TestFSM_Apply tests FSM command application
 func TestFSM_Apply(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "fsm-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	logger, _ := zap.NewDevelopment()
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 	fsm := NewFSM(store, logger)
 
 	ctx := context.Background()
@@ -399,8 +418,14 @@ func TestFSM_Apply(t *testing.T) {
 
 // TestFSM_Snapshot tests FSM snapshot creation and restoration
 func TestFSM_Snapshot(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "fsm-snapshot-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	logger, _ := zap.NewDevelopment()
-	store := storage.NewMemoryStore()
+	store := createTestStore(t, tmpDir)
 	fsm := NewFSM(store, logger)
 
 	ctx := context.Background()
@@ -432,7 +457,7 @@ func TestFSM_Snapshot(t *testing.T) {
 	}
 
 	// Create new store and FSM
-	newStore := storage.NewMemoryStore()
+	newStore := createTestStore(t, tmpDir)
 	newFSM := NewFSM(newStore, logger)
 
 	// Restore from snapshot

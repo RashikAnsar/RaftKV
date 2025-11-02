@@ -23,11 +23,11 @@ type Command struct {
 }
 
 type FSM struct {
-	store  storage.Store
+	store  *storage.DurableStore // Changed from storage.Store interface to concrete type
 	logger *zap.Logger
 }
 
-func NewFSM(store storage.Store, logger *zap.Logger) *FSM {
+func NewFSM(store *storage.DurableStore, logger *zap.Logger) *FSM {
 	return &FSM{
 		store:  store,
 		logger: logger,
@@ -119,9 +119,8 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 		return fmt.Errorf("failed to decode snapshot: %w", err)
 	}
 
-	if ms, ok := f.store.(*storage.MemoryStore); ok {
-		ms.Reset()
-	}
+	// Reset DurableStore (no type assertion needed - we know it's DurableStore)
+	f.store.Reset()
 
 	ctx := context.Background()
 	for key, value := range data {

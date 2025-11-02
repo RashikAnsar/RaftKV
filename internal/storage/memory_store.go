@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -131,26 +130,9 @@ func (s *MemoryStore) List(ctx context.Context, prefix string, limit int) ([]str
 	return keys, nil
 }
 
-func (s *MemoryStore) Snapshot(ctx context.Context) (string, error) {
-	if s.closed.Load() {
-		return "", ErrStoreClosed
-	}
-
-	// TODO: remove after implementation
-	err := errors.New("not implemented yet")
-
-	return "", err
-}
-
-func (s *MemoryStore) Restore(ctx context.Context, snapshotPath string) error {
-	if s.closed.Load() {
-		return ErrStoreClosed
-	}
-
-	// TODO: remove after implementation
-	err := errors.New("not implemented yet")
-	return err
-}
+// NOTE: Snapshot() and Restore() removed from MemoryStore.
+// MemoryStore is now only used internally by DurableStore.
+// DurableStore handles all snapshot/restore operations.
 
 func (s *MemoryStore) Stats() Stats {
 	s.mu.RLock()

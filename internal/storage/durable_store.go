@@ -318,3 +318,13 @@ func (s *DurableStore) Close() error {
 func (s *DurableStore) Sync() error {
 	return s.wal.Sync()
 }
+
+// Reset clears all data from the store (used during FSM restore)
+func (s *DurableStore) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.memory.Reset()
+	s.opsSinceSnapshot = 0
+	// Note: We don't reset walIndex as WAL is append-only
+}

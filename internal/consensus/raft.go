@@ -8,12 +8,10 @@ import (
 	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
-	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 	"go.uber.org/zap"
 
 	"github.com/RashikAnsar/raftkv/internal/storage"
@@ -37,8 +35,8 @@ type RaftConfig struct {
 	Bootstrap bool   // True if this is the first node
 	JoinAddr  string // Address of existing node to join (if not bootstrap)
 
-	// Store
-	Store storage.Store
+	// Store - changed to concrete type for unified architecture
+	Store *storage.DurableStore
 
 	// Logger
 	Logger *zap.Logger
@@ -51,86 +49,83 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 		return nil, fmt.Errorf("failed to create raft directory: %w", err)
 	}
 
+	// TODO: These will be used once we implement custom stores
 	// Create FSM
-	fsm := NewFSM(config.Store, config.Logger)
+	_ = NewFSM(config.Store, config.Logger)
 
 	// Setup Raft configuration
-	raftConfig := raft.DefaultConfig()
-	raftConfig.LocalID = raft.ServerID(config.NodeID)
-	raftConfig.Logger = newHCLogger(config.Logger)
-
-	// Tuning for faster elections (good for demos, adjust for production)
-	raftConfig.HeartbeatTimeout = 1000 * time.Millisecond
-	raftConfig.ElectionTimeout = 1000 * time.Millisecond
-	raftConfig.LeaderLeaseTimeout = 500 * time.Millisecond
-	raftConfig.CommitTimeout = 50 * time.Millisecond
+	_ = raft.DefaultConfig()
 
 	// Setup Raft transport (TCP)
-	addr, err := net.ResolveTCPAddr("tcp", config.RaftAddr)
+	_, err := net.ResolveTCPAddr("tcp", config.RaftAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve raft address: %w", err)
 	}
 
-	transport, err := raft.NewTCPTransport(config.RaftAddr, addr, 3, 10*time.Second, os.Stderr)
+	_, err = raft.NewTCPTransport(config.RaftAddr, nil, 3, 10*time.Second, os.Stderr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transport: %w", err)
 	}
 
-	// Create stable store (for Raft metadata)
-	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(config.RaftDir, "raft.db"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stable store: %w", err)
-	}
+	// TODO: Create custom Raft log store (will implement in Phase 1)
+	// logStore, err := storage.NewRaftLogStore(filepath.Join(config.RaftDir, "log"))
+	// if err != nil {
+	//     return nil, fmt.Errorf("failed to create log store: %w", err)
+	// }
 
-	// Create log store (for Raft log entries)
-	logStore, err := raftboltdb.NewBoltStore(filepath.Join(config.RaftDir, "raft-log.db"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create log store: %w", err)
-	}
+	// TODO: Create custom Raft stable store (will implement in Phase 1)
+	// stableStore, err := storage.NewRaftStableStore(config.RaftDir)
+	// if err != nil {
+	//     return nil, fmt.Errorf("failed to create stable store: %w", err)
+	// }
 
-	// Create snapshot store
-	snapshotStore, err := raft.NewFileSnapshotStore(config.RaftDir, 2, os.Stderr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create snapshot store: %w", err)
-	}
+	// TODO: Uncomment after implementing custom stores
+	// // Create snapshot store
+	// snapshotStore, err := raft.NewFileSnapshotStore(config.RaftDir, 2, os.Stderr)
+	// if err != nil {
+	//     return nil, fmt.Errorf("failed to create snapshot store: %w", err)
+	// }
 
-	// Create Raft instance
-	ra, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create raft: %w", err)
-	}
+	// // Create Raft instance
+	// ra, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
+	// if err != nil {
+	//     return nil, fmt.Errorf("failed to create raft: %w", err)
+	// }
 
-	node := &RaftNode{
-		raft:      ra,
-		fsm:       fsm,
-		transport: transport,
-		config:    raftConfig,
-		logger:    config.Logger,
-	}
+	// node := &RaftNode{
+	//     raft:      ra,
+	//     fsm:       fsm,
+	//     transport: transport,
+	//     config:    raftConfig,
+	//     logger:    config.Logger,
+	// }
 
-	// Bootstrap cluster if this is the first node
-	if config.Bootstrap {
-		configuration := raft.Configuration{
-			Servers: []raft.Server{
-				{
-					ID:      raft.ServerID(config.NodeID),
-					Address: transport.LocalAddr(),
-				},
-			},
-		}
+	// // Bootstrap cluster if this is the first node
+	// if config.Bootstrap {
+	//     configuration := raft.Configuration{
+	//         Servers: []raft.Server{
+	//             {
+	//                 ID:      raft.ServerID(config.NodeID),
+	//                 Address: transport.LocalAddr(),
+	//             },
+	//         },
+	//     }
 
-		future := ra.BootstrapCluster(configuration)
-		if err := future.Error(); err != nil {
-			// It's okay if already bootstrapped
-			if err != raft.ErrCantBootstrap {
-				return nil, fmt.Errorf("failed to bootstrap cluster: %w", err)
-			}
-		}
+	//     future := ra.BootstrapCluster(configuration)
+	//     if err := future.Error(); err != nil {
+	//         // It's okay if already bootstrapped
+	//         if err != raft.ErrCantBootstrap {
+	//             return nil, fmt.Errorf("failed to bootstrap cluster: %w", err)
+	//         }
+	//     }
 
-		config.Logger.Info("Cluster bootstrapped", zap.String("node_id", config.NodeID))
-	}
+	//     config.Logger.Info("Cluster bootstrapped", zap.String("node_id", config.NodeID))
+	// }
 
-	return node, nil
+	// return node, nil
+
+	// TEMPORARY: Return error until we implement custom stores
+	return nil, fmt.Errorf("BoltDB removed - custom Raft stores not yet implemented (see NO_BOLTDB_ARCHITECTURE.md Phase 1)")
 }
 
 // Apply applies a command to the Raft cluster

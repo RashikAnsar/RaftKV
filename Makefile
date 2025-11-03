@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli install-cli test test-coverage bench bench-grpc bench-http bench-compare clean fmt lint vet help test-api load-test run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc test-cli-auto-config quickstart proto
+.PHONY: all run build build-cli test test-storage test-compaction test-coverage bench bench-compaction bench-grpc bench-http clean fmt help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto
 
 # Variables
 BINARY_NAME=kvstore
@@ -35,36 +35,6 @@ run-server: build
 		--sync-on-write=false \
 		--snapshot-every=1000
 
-# NOTE: before running this run-server
-test-api:
-	@echo "Testing API..."
-	@echo "\n1. Health check:"
-	@curl -s http://localhost:8080/health | jq
-	@echo "\n2. Put key:"
-	@curl -s -X PUT -d "Hello, World!" http://localhost:8080/keys/greeting
-	@echo "\n3. Get key:"
-	@curl -s http://localhost:8080/keys/greeting
-	@echo "\n4. List keys:"
-	@curl -s http://localhost:8080/keys | jq
-	@echo "\n5. Stats:"
-	@curl -s http://localhost:8080/stats | jq
-
-# NOTE: before running this run-server
-load-test:
-	@echo "Running load test..."
-	@echo "PUT 1000 keys..."
-	@for i in $$(seq 1 1000); do \
-		curl -s -X PUT -d "value-$$i" http://localhost:8080/keys/key-$$i > /dev/null & \
-	done
-	@wait
-	@echo "Done!"
-	@curl -s http://localhost:8080/stats | jq
-
-install-cli:
-	@echo "Installing kvcli to /usr/local/bin..."
-	@sudo cp bin/kvcli /usr/local/bin/
-	@echo "kvcli installed successfully"
-
 build-cli:
 	@echo "Building CLI..."
 	@mkdir -p bin
@@ -73,6 +43,14 @@ build-cli:
 test:
 	@echo "Running tests..."
 	$(GO) test -v -race -cover ./...
+
+test-storage:
+	@echo "Running storage tests only..."
+	$(GO) test -v -race ./internal/storage
+
+test-compaction:
+	@echo "Running compaction tests..."
+	$(GO) test -v -race -run="Compaction|Snapshot" ./internal/storage
 
 test-coverage:
 	@echo "Running tests with coverage..."
@@ -84,6 +62,10 @@ bench:
 	@echo "Running storage benchmarks..."
 	$(GO) test -bench=. -benchmem ./internal/storage
 
+bench-compaction:
+	@echo "Running compaction benchmarks..."
+	$(GO) test -bench=BenchmarkWALCompaction -benchmem ./internal/storage -run=^$
+
 bench-grpc:
 	@echo "Running gRPC server benchmarks..."
 	$(GO) test ./internal/server -bench=BenchmarkGRPCServer -benchmem -run=^$ -timeout 60s
@@ -92,26 +74,13 @@ bench-http:
 	@echo "Running HTTP server benchmarks..."
 	$(GO) test ./internal/server -bench=BenchmarkHTTPServer -benchmem -run=^$ -timeout 60s
 
-bench-compare:
-	@echo "Running benchmark comparison (gRPC vs HTTP)..."
-	@echo "=== gRPC Benchmarks ===" > benchmark_results.txt
-	@$(GO) test ./internal/server -bench=BenchmarkGRPCServer -benchmem -run=^$ 2>&1 | grep -E "^(Benchmark|goos|goarch|cpu)" >> benchmark_results.txt
-	@echo "" >> benchmark_results.txt
-	@echo "=== HTTP Benchmarks ===" >> benchmark_results.txt
-	@$(GO) test ./internal/server -bench=BenchmarkHTTPServer -benchmem -run=^$ 2>&1 | grep -E "^(Benchmark|goos|goarch|cpu)" >> benchmark_results.txt
-	@echo ""
-	@cat benchmark_results.txt
-	@echo ""
-	@echo "Results saved to benchmark_results.txt"
-	@echo "See BENCHMARK_COMPARISON.md for detailed analysis"
-
 fmt:
 	@echo "Formatting code..."
 	$(GO) fmt ./...
 
 clean:
 	@echo "Cleaning..."
-	rm -rf bin/ coverage.out coverage.html cpu.out mem.out data/
+	rm -rf bin/ coverage.out coverage.html cpu.out mem.out data/ test-data/ benchmark_results.txt
 
 # Raft cluster targets
 raft-cluster: build
@@ -211,10 +180,6 @@ raft-test-grpc: build-cli
 	@echo "\n7. Get via gRPC:"
 	@./bin/kvcli --protocol=grpc --server=localhost:9091 get user:grpc:3
 
-test-cli-auto-config: build-cli
-	@echo "Testing CLI auto-configuration..."
-	@./scripts/test-cli-auto-config.sh
-
 quickstart: build build-cli
 	@echo "🚀 Starting RaftKV quickstart..."
 	@echo ""
@@ -256,9 +221,7 @@ help:
 	@echo ""
 	@echo "Single-node mode:"
 	@echo "  make run             - Run server locally (single-node)"
-	@echo "  make run-server      - Run HTTP server (single-node)"
-	@echo "  make test-api        - Test HTTP API (single-node)"
-	@echo "  make load-test       - Load test HTTP API (single-node)"
+	@echo "  make run-server      - Run HTTP server with default config"
 	@echo ""
 	@echo "Raft cluster mode:"
 	@echo "  make raft-cluster    - Start 3-node Raft cluster (automated)"
@@ -268,20 +231,20 @@ help:
 	@echo "  make raft-node3      - Start node3 manually"
 	@echo "  make raft-status     - Check cluster status"
 	@echo "  make raft-test-api   - Test Raft cluster via HTTP API"
-	@echo "  make raft-test-grpc  - Test Raft cluster via gRPC (with auto-config)"
+	@echo "  make raft-test-grpc  - Test Raft cluster via gRPC"
 	@echo ""
 	@echo "Build & test:"
 	@echo "  make proto           - Generate protobuf code from .proto files"
 	@echo "  make build           - Build server binary"
 	@echo "  make build-cli       - Build CLI binary"
-	@echo "  make install-cli     - Install CLI to /usr/local/bin"
-	@echo "  make test            - Run tests with race detector"
+	@echo "  make test            - Run all tests with race detector"
+	@echo "  make test-storage    - Run storage tests only"
+	@echo "  make test-compaction - Run compaction and snapshot tests"
 	@echo "  make test-coverage   - Run tests with coverage report"
-	@echo "  make test-cli-auto-config - Test CLI auto-configuration feature"
 	@echo "  make bench           - Run storage benchmarks"
+	@echo "  make bench-compaction - Run compaction benchmarks"
 	@echo "  make bench-grpc      - Run gRPC server benchmarks"
 	@echo "  make bench-http      - Run HTTP server benchmarks"
-	@echo "  make bench-compare   - Compare gRPC vs HTTP performance"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean           - Clean build artifacts and data"
@@ -291,17 +254,17 @@ help:
 	@echo "  # Quickstart (recommended)"
 	@echo "  make quickstart"
 	@echo ""
+	@echo "  # Development workflow"
+	@echo "  make test-storage && make build"
+	@echo ""
 	@echo "  # Start cluster and test"
 	@echo "  make raft-cluster && sleep 5 && make raft-test-grpc"
-	@echo ""
-	@echo "  # Test CLI auto-configuration"
-	@echo "  make raft-cluster && sleep 5 && make test-cli-auto-config"
 	@echo ""
 	@echo "  # Manual 3-node setup (in separate terminals)"
 	@echo "  make raft-node1  # Terminal 1"
 	@echo "  make raft-node2  # Terminal 2"
 	@echo "  make raft-node3  # Terminal 3"
 	@echo ""
-	@echo "  # Use CLI with auto-configuration"
+	@echo "  # Use CLI with cluster"
 	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 put key value"
 	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 get key"

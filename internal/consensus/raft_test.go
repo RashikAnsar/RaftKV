@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,6 +15,17 @@ import (
 
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
+
+// getFreePort returns a free port on localhost
+func getFreePort(t *testing.T) string {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+	return addr
+}
 
 // Helper function to create DurableStore for tests
 func createTestStore(t *testing.T, dir string) *storage.DurableStore {
@@ -46,10 +58,11 @@ func TestRaftNode_SingleNode(t *testing.T) {
 	// Create storage
 	store := createTestStore(t, tmpDir)
 
-	// Create Raft node
+	// Create Raft node with dynamic port
+	raftAddr := getFreePort(t)
 	node, err := NewRaftNode(RaftConfig{
 		NodeID:    "node1",
-		RaftAddr:  "127.0.0.1:7000",
+		RaftAddr:  raftAddr,
 		RaftDir:   tmpDir,
 		Bootstrap: true,
 		Store:     store,
@@ -120,9 +133,10 @@ func TestRaftNode_MultipleOperations(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	store := createTestStore(t, tmpDir)
 
+	raftAddr := getFreePort(t)
 	node, err := NewRaftNode(RaftConfig{
 		NodeID:    "node1",
-		RaftAddr:  "127.0.0.1:7001",
+		RaftAddr:  raftAddr,
 		RaftDir:   tmpDir,
 		Bootstrap: true,
 		Store:     store,

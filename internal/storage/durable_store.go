@@ -9,27 +9,42 @@ import (
 )
 
 type DurableStore struct {
-	mu              sync.Mutex // Protects walIndex and opsSinceSnapshot
+	mu              sync.Mutex // Protects walIndex, opsSinceSnapshot, and Raft tracking
 	memory          *MemoryStore
 	wal             *WAL
 	snapshotManager *SnapshotManager
+	config          DurableStoreConfig // Store config for compaction settings
 
 	snapshotEvery    int         // Take snapshot every N operations (0 = disabled)
 	opsSinceSnapshot int         // Operations since last snapshot
 	walIndex         uint64      // Current WAL index
 	snapshotting     atomic.Bool // True if snapshot in progress
+
+	// Raft tracking
+	lastRaftIndex uint64 // Last applied Raft log index
+	lastRaftTerm  uint64 // Last applied Raft term
 }
 
 type DurableStoreConfig struct {
 	DataDir       string
 	SyncOnWrite   bool // true = durable but slower, false = faster but risk data loss
 	SnapshotEvery int  // Take snapshot every N operations (0 = disabled)
+
+	// Compaction settings
+	CompactionEnabled bool   // Enable WAL compaction after snapshots
+	CompactionMargin  uint64 // Safety margin: keep entries before (snapshot index - margin)
+	MaxWALSegments    int    // Force compaction if WAL segments exceed this (0 = disabled)
 }
 
 func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 	// Default: snapshot every 10,000 operations
 	if config.SnapshotEvery == 0 {
 		config.SnapshotEvery = 10000
+	}
+
+	// Default compaction settings
+	if config.CompactionMargin == 0 {
+		config.CompactionMargin = 100 // Keep 100 entries before snapshot
 	}
 
 	// Create WAL
@@ -55,6 +70,7 @@ func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 		memory:          memory,
 		wal:             wal,
 		snapshotManager: snapshotManager,
+		config:          config, // Store config for compaction
 		snapshotEvery:   config.SnapshotEvery,
 	}
 
@@ -86,9 +102,11 @@ func (s *DurableStore) recover() error {
 		}
 
 		s.walIndex = snapshot.Index
+		s.lastRaftIndex = snapshot.RaftIndex
+		s.lastRaftTerm = snapshot.RaftTerm
 
-		fmt.Printf("Recovered from snapshot at index %d (%d keys)\n",
-			snapshot.Index, snapshot.KeyCount)
+		fmt.Printf("Recovered from snapshot at index %d (Raft: %d/%d, %d keys)\n",
+			snapshot.Index, snapshot.RaftIndex, snapshot.RaftTerm, snapshot.KeyCount)
 	}
 
 	// Step 2: Replay WAL entries after snapshot
@@ -100,8 +118,10 @@ func (s *DurableStore) recover() error {
 	// Apply entries after snapshot index
 	appliedCount := 0
 	for _, entry := range entries {
-		// Skip entries already in snapshot
-		// (We don't have entry indices in WAL, so we apply all)
+		// Skip entries already in snapshot (if we have snapshot metadata)
+		if snapshot != nil && entry.RaftIndex > 0 && entry.RaftIndex <= snapshot.RaftIndex {
+			continue
+		}
 
 		switch entry.Operation {
 		case OpPut:
@@ -111,12 +131,24 @@ func (s *DurableStore) recover() error {
 			s.walIndex++
 			appliedCount++
 
+			// Update Raft tracking from WAL entries
+			if entry.RaftIndex > s.lastRaftIndex {
+				s.lastRaftIndex = entry.RaftIndex
+				s.lastRaftTerm = entry.RaftTerm
+			}
+
 		case OpDelete:
 			if err := s.memory.Delete(ctx, entry.Key); err != nil {
 				return fmt.Errorf("failed to apply DELETE during recovery: %w", err)
 			}
 			s.walIndex++
 			appliedCount++
+
+			// Update Raft tracking from WAL entries
+			if entry.RaftIndex > s.lastRaftIndex {
+				s.lastRaftIndex = entry.RaftIndex
+				s.lastRaftTerm = entry.RaftTerm
+			}
 
 		default:
 			return fmt.Errorf("unknown operation type: %d", entry.Operation)
@@ -250,9 +282,11 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 
 	s.mu.Lock()
 	currentIndex := s.walIndex
+	raftIndex := s.lastRaftIndex
+	raftTerm := s.lastRaftTerm
 	s.mu.Unlock()
 
-	if err := s.snapshotManager.Create(currentIndex, data); err != nil {
+	if err := s.snapshotManager.CreateWithRaftMetadata(currentIndex, data, raftIndex, raftTerm); err != nil {
 		return "", fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
@@ -265,9 +299,30 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 		fmt.Printf("WARNING: Failed to delete old snapshots: %v\n", err)
 	}
 
-	// Clean up old WAL segments (keep segments after latest snapshot)
-	// Note: In production, we might need to handle as per requirements
-	// For now, we don't delete WAL segments to be safe
+	// Compact WAL after snapshot (if enabled)
+	if s.config.CompactionEnabled && raftIndex > 0 {
+		// Keep a safety margin before the snapshot
+		compactBefore := raftIndex
+		if raftIndex > s.config.CompactionMargin {
+			compactBefore = raftIndex - s.config.CompactionMargin
+		}
+
+		deletedCount, err := s.wal.CompactSegmentsBefore(compactBefore)
+		if err != nil {
+			fmt.Printf("WARNING: Failed to compact WAL: %v\n", err)
+		} else if deletedCount > 0 {
+			fmt.Printf("WAL compacted: deleted %d segments (before RaftIndex %d)\n", deletedCount, compactBefore)
+		}
+	}
+
+	// Check if we need forced compaction due to too many segments
+	if s.config.MaxWALSegments > 0 {
+		segmentCount, _ := s.wal.GetSegmentCount()
+		if segmentCount > s.config.MaxWALSegments {
+			fmt.Printf("WARNING: WAL has %d segments (max: %d). Consider triggering snapshot.\n",
+				segmentCount, s.config.MaxWALSegments)
+		}
+	}
 
 	path := fmt.Sprintf("snapshot-%09d.gob", currentIndex)
 	return path, nil
@@ -293,8 +348,12 @@ func (s *DurableStore) Restore(ctx context.Context, snapshotPath string) error {
 		}
 	}
 
+	s.mu.Lock()
 	s.walIndex = snapshot.Index
+	s.lastRaftIndex = snapshot.RaftIndex
+	s.lastRaftTerm = snapshot.RaftTerm
 	s.opsSinceSnapshot = 0
+	s.mu.Unlock()
 
 	return nil
 }
@@ -327,4 +386,84 @@ func (s *DurableStore) Reset() {
 	s.memory.Reset()
 	s.opsSinceSnapshot = 0
 	// Note: We don't reset walIndex as WAL is append-only
+}
+
+// ApplyRaftEntry applies a Raft log entry to the store with Raft metadata
+// This is the Raft-aware version of Put/Delete
+func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, op string, key string, value []byte) error {
+	// Determine operation type
+	var operation byte
+	switch op {
+	case "put":
+		operation = OpPut
+	case "delete":
+		operation = OpDelete
+	default:
+		return fmt.Errorf("unknown operation: %s", op)
+	}
+
+	// Create WAL entry with Raft metadata
+	entry := &WALEntry{
+		RaftIndex: index,
+		RaftTerm:  term,
+		Operation: operation,
+		Timestamp: time.Now(),
+		Key:       key,
+		Value:     value,
+	}
+
+	// 1. Write to WAL first
+	if err := s.wal.Append(entry); err != nil {
+		return fmt.Errorf("failed to write to WAL: %w", err)
+	}
+
+	// 2. Apply to memory
+	switch operation {
+	case OpPut:
+		if err := s.memory.Put(ctx, key, value); err != nil {
+			return fmt.Errorf("failed to apply PUT to memory: %w", err)
+		}
+	case OpDelete:
+		if err := s.memory.Delete(ctx, key); err != nil {
+			return fmt.Errorf("failed to apply DELETE to memory: %w", err)
+		}
+	}
+
+	// 3. Update counters and Raft tracking
+	s.mu.Lock()
+	s.walIndex++
+	s.opsSinceSnapshot++
+	s.lastRaftIndex = index
+	s.lastRaftTerm = term
+	shouldSnapshot := s.snapshotEvery > 0 &&
+		s.opsSinceSnapshot >= s.snapshotEvery &&
+		!s.snapshotting.Load()
+	s.mu.Unlock()
+
+	// 4. Trigger snapshot if needed
+	if shouldSnapshot {
+		if s.snapshotting.CompareAndSwap(false, true) {
+			go func() {
+				s.takeSnapshot()
+				s.snapshotting.Store(false)
+			}()
+		}
+	}
+
+	return nil
+}
+
+// LastAppliedIndex returns the last applied Raft index and term
+func (s *DurableStore) LastAppliedIndex() (index, term uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastRaftIndex, s.lastRaftTerm
+}
+
+// SetLastAppliedIndex sets the last applied Raft index (used during restore)
+func (s *DurableStore) SetLastAppliedIndex(index, term uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastRaftIndex = index
+	s.lastRaftTerm = term
 }

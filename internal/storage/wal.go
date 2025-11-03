@@ -17,16 +17,15 @@ import (
 
 const (
 	// WAL format constants
-	walMagic1  = 0xAB
-	walMagic2  = 0xCD
-	walVersion = 0x01
+	walMagic   = 0xABCD
+	walVersion = 0x02 // Current version (with Raft metadata)
 
 	// Operation types
 	OpPut    = 0x01
 	OpDelete = 0x02
 
 	// Size constants
-	walHeaderSize   = 16 // magic(2) + version(1) + op(1) + timestamp(8) + length(4)
+	walHeaderSize   = 32 // magic(2) + version(1) + op(1) + raftIndex(8) + raftTerm(8) + timestamp(8) + length(4)
 	walChecksumSize = 4
 
 	// Segment constants
@@ -35,6 +34,8 @@ const (
 )
 
 type WALEntry struct {
+	RaftIndex uint64 // Raft log index (0 for single-node or non-Raft operations)
+	RaftTerm  uint64 // Raft term (0 for single-node or non-Raft operations)
 	Operation byte
 	Timestamp time.Time
 	Key       string
@@ -181,12 +182,13 @@ func (w *WAL) serializeEntry(entry *WALEntry) ([]byte, error) {
 	buf := make([]byte, totalSize)
 
 	// Write header
-	buf[0] = walMagic1
-	buf[1] = walMagic2
+	binary.BigEndian.PutUint16(buf[0:2], walMagic)
 	buf[2] = walVersion
 	buf[3] = entry.Operation
-	binary.BigEndian.PutUint64(buf[4:12], uint64(entry.Timestamp.UnixNano()))
-	binary.BigEndian.PutUint32(buf[12:16], uint32(dataSize))
+	binary.BigEndian.PutUint64(buf[4:12], entry.RaftIndex)
+	binary.BigEndian.PutUint64(buf[12:20], entry.RaftTerm)
+	binary.BigEndian.PutUint64(buf[20:28], uint64(entry.Timestamp.UnixNano()))
+	binary.BigEndian.PutUint32(buf[28:32], uint32(dataSize))
 
 	// Write data
 	offset := walHeaderSize
@@ -278,26 +280,28 @@ func (w *WAL) readSegment(index uint64) ([]*WALEntry, error) {
 }
 
 func (w *WAL) readEntry(reader *bufio.Reader) (*WALEntry, error) {
-	// Read header
+	// Read full header
 	header := make([]byte, walHeaderSize)
 	if _, err := io.ReadFull(reader, header); err != nil {
 		return nil, err
 	}
 
-	// Validate magic bytes
-	if header[0] != walMagic1 || header[1] != walMagic2 {
-		return nil, fmt.Errorf("invalid magic bytes")
+	// Validate magic bytes and version
+	magic := binary.BigEndian.Uint16(header[0:2])
+	if magic != walMagic {
+		return nil, fmt.Errorf("invalid magic bytes: %x", magic)
 	}
 
-	// Parse header
 	version := header[2]
 	if version != walVersion {
-		return nil, fmt.Errorf("unsupported version: %d", version)
+		return nil, fmt.Errorf("unsupported version: %d (expected %d)", version, walVersion)
 	}
 
 	operation := header[3]
-	timestamp := int64(binary.BigEndian.Uint64(header[4:12]))
-	dataSize := binary.BigEndian.Uint32(header[12:16])
+	raftIndex := binary.BigEndian.Uint64(header[4:12])
+	raftTerm := binary.BigEndian.Uint64(header[12:20])
+	timestamp := int64(binary.BigEndian.Uint64(header[20:28]))
+	dataSize := binary.BigEndian.Uint32(header[28:32])
 
 	// Read data
 	data := make([]byte, dataSize)
@@ -324,6 +328,8 @@ func (w *WAL) readEntry(reader *bufio.Reader) (*WALEntry, error) {
 
 	// Parse data
 	entry := &WALEntry{
+		RaftIndex: raftIndex,
+		RaftTerm:  raftTerm,
 		Operation: operation,
 		Timestamp: time.Unix(0, timestamp),
 	}
@@ -442,4 +448,157 @@ func (w *WAL) Sync() error {
 	}
 
 	return nil
+}
+
+// CompactSegmentsBefore deletes WAL segments where all entries have RaftIndex < beforeIndex
+// Returns the number of segments deleted and any error
+func (w *WAL) CompactSegmentsBefore(beforeIndex uint64) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	segments, err := w.listSegments()
+	if err != nil {
+		return 0, fmt.Errorf("failed to list segments: %w", err)
+	}
+
+	if len(segments) == 0 {
+		return 0, nil
+	}
+
+	// Don't delete the current active segment
+	var deletedCount int
+	for _, segIndex := range segments {
+		// Skip current segment
+		if segIndex == w.currentIndex {
+			continue
+		}
+
+		// Check if this segment only has old entries
+		maxRaftIndex, err := w.getMaxRaftIndexInSegment(segIndex)
+		if err != nil {
+			// If we can't read the segment, skip it
+			fmt.Printf("WARNING: Failed to read segment %d: %v\n", segIndex, err)
+			continue
+		}
+
+		// If all entries in this segment are old (< beforeIndex), delete it
+		if maxRaftIndex > 0 && maxRaftIndex < beforeIndex {
+			path := w.segmentPath(segIndex)
+			if err := os.Remove(path); err != nil {
+				return deletedCount, fmt.Errorf("failed to delete segment %d: %w", segIndex, err)
+			}
+			deletedCount++
+			fmt.Printf("Compacted WAL segment %d (max RaftIndex %d < %d)\n", segIndex, maxRaftIndex, beforeIndex)
+		}
+	}
+
+	return deletedCount, nil
+}
+
+// getMaxRaftIndexInSegment returns the maximum RaftIndex in a segment
+func (w *WAL) getMaxRaftIndexInSegment(segmentIndex uint64) (uint64, error) {
+	path := w.segmentPath(segmentIndex)
+
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	var maxRaftIndex uint64
+
+	for {
+		entry, err := w.readEntry(reader)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// If we encounter corruption, assume segment is old and can be compacted
+			return maxRaftIndex, nil
+		}
+
+		if entry.RaftIndex > maxRaftIndex {
+			maxRaftIndex = entry.RaftIndex
+		}
+	}
+
+	return maxRaftIndex, nil
+}
+
+// GetStorageSize returns the total disk usage of all WAL segments in bytes
+func (w *WAL) GetStorageSize() (int64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	segments, err := w.listSegments()
+	if err != nil {
+		return 0, err
+	}
+
+	var totalSize int64
+	for _, index := range segments {
+		path := w.segmentPath(index)
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		totalSize += info.Size()
+	}
+
+	return totalSize, nil
+}
+
+// GetSegmentCount returns the number of WAL segments
+func (w *WAL) GetSegmentCount() (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	segments, err := w.listSegments()
+	if err != nil {
+		return 0, err
+	}
+
+	return len(segments), nil
+}
+
+// GetOldestRaftIndex returns the oldest (minimum) RaftIndex across all WAL segments
+func (w *WAL) GetOldestRaftIndex() (uint64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	segments, err := w.listSegments()
+	if err != nil {
+		return 0, err
+	}
+
+	if len(segments) == 0 {
+		return 0, nil
+	}
+
+	var oldestIndex uint64 = ^uint64(0) // Max uint64
+
+	for _, segIndex := range segments {
+		path := w.segmentPath(segIndex)
+		file, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+
+		reader := bufio.NewReader(file)
+		entry, err := w.readEntry(reader)
+		file.Close()
+
+		if err == nil && entry.RaftIndex > 0 {
+			if entry.RaftIndex < oldestIndex {
+				oldestIndex = entry.RaftIndex
+			}
+		}
+	}
+
+	if oldestIndex == ^uint64(0) {
+		return 0, nil
+	}
+
+	return oldestIndex, nil
 }

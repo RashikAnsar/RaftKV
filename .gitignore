@@ -11,6 +11,7 @@ coverage.html
 
 # Data directories
 data/
+test-data/
 *.log
 *.dat
 logs/

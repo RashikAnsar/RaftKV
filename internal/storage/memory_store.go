@@ -130,10 +130,6 @@ func (s *MemoryStore) List(ctx context.Context, prefix string, limit int) ([]str
 	return keys, nil
 }
 
-// NOTE: Snapshot() and Restore() removed from MemoryStore.
-// MemoryStore is now only used internally by DurableStore.
-// DurableStore handles all snapshot/restore operations.
-
 func (s *MemoryStore) Stats() Stats {
 	s.mu.RLock()
 	keyCount := len(s.data)

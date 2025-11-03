@@ -19,6 +19,17 @@ import (
 
 const bufSize = 1024 * 1024
 
+// getFreePort returns a free port on localhost
+func getFreePort(t *testing.T) string {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+	return addr
+}
+
 // setupTestGRPCServer creates a test gRPC server with in-memory backend
 func setupTestGRPCServer(t *testing.T) (*GRPCServer, pb.KVStoreClient, func()) {
 	// Create a new bufconn listener for each test
@@ -27,16 +38,25 @@ func setupTestGRPCServer(t *testing.T) (*GRPCServer, pb.KVStoreClient, func()) {
 	bufDialer := func(context.Context, string) (net.Conn, error) {
 		return lis.Dial()
 	}
-	// Create in-memory store
-	store := storage.NewMemoryStore()
+	// Create durable store for testing
+	store, err := storage.NewDurableStore(storage.DurableStoreConfig{
+		DataDir:       t.TempDir(),
+		SyncOnWrite:   false,
+		SnapshotEvery: 100,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	// Note: store will be closed in cleanup function
 
 	// Create logger
 	logger := zap.NewNop()
 
 	// Create temporary Raft node (single node cluster for testing)
+	raftAddr := getFreePort(t)
 	raftConfig := consensus.RaftConfig{
 		NodeID:    "test-node-1",
-		RaftAddr:  "localhost:7000",
+		RaftAddr:  raftAddr,
 		RaftDir:   t.TempDir(),
 		Bootstrap: true,
 		Store:     store,
@@ -86,6 +106,7 @@ func setupTestGRPCServer(t *testing.T) (*GRPCServer, pb.KVStoreClient, func()) {
 		conn.Close()
 		server.Stop()
 		raftNode.Shutdown()
+		store.Close()
 		lis.Close()
 	}
 

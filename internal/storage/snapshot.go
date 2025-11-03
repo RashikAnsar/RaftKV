@@ -18,6 +18,11 @@ const (
 )
 
 type Snapshot struct {
+	// Raft metadata
+	RaftIndex uint64 // Raft log index at snapshot time
+	RaftTerm  uint64 // Raft term at snapshot time
+
+	// Existing fields
 	Index     uint64            // WAL index at snapshot time
 	Timestamp time.Time         // When snapshot was taken
 	KeyCount  int64             // Number of keys
@@ -56,10 +61,17 @@ func NewSnapshotManager(dir string) (*SnapshotManager, error) {
 }
 
 func (sm *SnapshotManager) Create(index uint64, data map[string][]byte) error {
+	return sm.CreateWithRaftMetadata(index, data, 0, 0)
+}
+
+// CreateWithRaftMetadata creates a snapshot with Raft index and term
+func (sm *SnapshotManager) CreateWithRaftMetadata(index uint64, data map[string][]byte, raftIndex, raftTerm uint64) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	snapshot := &Snapshot{
+		RaftIndex: raftIndex,
+		RaftTerm:  raftTerm,
 		Index:     index,
 		Timestamp: time.Now(),
 		KeyCount:  int64(len(data)),

@@ -45,41 +45,26 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		return fmt.Errorf("failed to unmarshal command: %w", err)
 	}
 
+	// Use ApplyRaftEntry with context
 	ctx := context.Background()
-
-	switch cmd.Op {
-	case OpTypePut:
-		if err := f.store.Put(ctx, cmd.Key, cmd.Value); err != nil {
-			f.logger.Error("Failed to apply PUT",
-				zap.String("key", cmd.Key),
-				zap.Error(err),
-			)
-			return err
-		}
-		f.logger.Debug("Applied PUT",
+	if err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, cmd.Op, cmd.Key, cmd.Value); err != nil {
+		f.logger.Error("Failed to apply Raft entry",
+			zap.String("op", cmd.Op),
 			zap.String("key", cmd.Key),
 			zap.Uint64("index", log.Index),
+			zap.Uint64("term", log.Term),
+			zap.Error(err),
 		)
-		return nil
-
-	case OpTypeDelete:
-		if err := f.store.Delete(ctx, cmd.Key); err != nil {
-			f.logger.Error("Failed to apply DELETE",
-				zap.String("key", cmd.Key),
-				zap.Error(err),
-			)
-			return err
-		}
-		f.logger.Debug("Applied DELETE",
-			zap.String("key", cmd.Key),
-			zap.Uint64("index", log.Index),
-		)
-		return nil
-
-	default:
-		f.logger.Error("Unknown operation type", zap.String("op", cmd.Op))
-		return fmt.Errorf("unknown operation: %s", cmd.Op)
+		return err
 	}
+
+	f.logger.Debug("Applied Raft entry",
+		zap.String("op", cmd.Op),
+		zap.String("key", cmd.Key),
+		zap.Uint64("index", log.Index),
+		zap.Uint64("term", log.Term),
+	)
+	return nil
 }
 
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
@@ -100,12 +85,21 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 		data[key] = value
 	}
 
+	// Get Raft metadata from DurableStore
+	index, term := f.store.LastAppliedIndex()
+
 	snapshot := &fsmSnapshot{
+		index:  index,
+		term:   term,
 		data:   data,
 		logger: f.logger,
 	}
 
-	f.logger.Info("FSM snapshot created", zap.Int("keys", len(data)))
+	f.logger.Info("FSM snapshot created",
+		zap.Int("keys", len(data)),
+		zap.Uint64("raft_index", index),
+		zap.Uint64("raft_term", term),
+	)
 	return snapshot, nil
 }
 
@@ -114,34 +108,64 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 
 	f.logger.Info("Restoring FSM from snapshot")
 
-	var data map[string][]byte
-	if err := json.NewDecoder(rc).Decode(&data); err != nil {
+	var snapshotData struct {
+		Index uint64            `json:"index"`
+		Term  uint64            `json:"term"`
+		Data  map[string][]byte `json:"data"`
+	}
+
+	decoder := json.NewDecoder(rc)
+	if err := decoder.Decode(&snapshotData); err != nil {
 		return fmt.Errorf("failed to decode snapshot: %w", err)
 	}
 
-	// Reset DurableStore (no type assertion needed - we know it's DurableStore)
+	// Reset DurableStore
 	f.store.Reset()
 
 	ctx := context.Background()
-	for key, value := range data {
+	for key, value := range snapshotData.Data {
 		if err := f.store.Put(ctx, key, value); err != nil {
 			return fmt.Errorf("failed to restore key %s: %w", key, err)
 		}
 	}
 
-	f.logger.Info("FSM restored from snapshot", zap.Int("keys", len(data)))
+	// Restore Raft tracking
+	f.store.SetLastAppliedIndex(snapshotData.Index, snapshotData.Term)
+
+	f.logger.Info("FSM restored from snapshot",
+		zap.Int("keys", len(snapshotData.Data)),
+		zap.Uint64("raft_index", snapshotData.Index),
+		zap.Uint64("raft_term", snapshotData.Term),
+	)
 	return nil
 }
 
 type fsmSnapshot struct {
+	index  uint64 // Raft index
+	term   uint64 // Raft term
 	data   map[string][]byte
 	logger *zap.Logger
 }
 
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
-	s.logger.Info("Persisting FSM snapshot", zap.Int("keys", len(s.data)))
+	s.logger.Info("Persisting FSM snapshot",
+		zap.Int("keys", len(s.data)),
+		zap.Uint64("raft_index", s.index),
+		zap.Uint64("raft_term", s.term),
+	)
 
-	if err := json.NewEncoder(sink).Encode(s.data); err != nil {
+	// Create snapshot data structure with Raft metadata
+	snapshotData := struct {
+		Index uint64            `json:"index"`
+		Term  uint64            `json:"term"`
+		Data  map[string][]byte `json:"data"`
+	}{
+		Index: s.index,
+		Term:  s.term,
+		Data:  s.data,
+	}
+
+	if err := json.NewEncoder(sink).Encode(snapshotData); err != nil {
 		sink.Cancel()
 		return fmt.Errorf("failed to encode snapshot: %w", err)
 	}

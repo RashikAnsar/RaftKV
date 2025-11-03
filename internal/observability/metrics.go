@@ -15,6 +15,16 @@ type Metrics struct {
 	StorageOperationDuration *prometheus.HistogramVec
 	StorageKeysTotal         prometheus.Gauge
 	StorageSnapshotsTotal    prometheus.Gauge
+
+	// Storage and compaction metrics
+	WALSegmentsTotal         prometheus.Gauge
+	WALSizeBytes             prometheus.Gauge
+	WALEntriesCompactedTotal prometheus.Counter
+	RaftLogEntriesTotal      prometheus.Gauge
+	RaftLogSizeBytes         prometheus.Gauge
+	SnapshotSizeBytes        prometheus.Gauge
+	SnapshotCreationDuration prometheus.Histogram
+	CompactionDuration       prometheus.Histogram
 }
 
 func NewMetrics() *Metrics {
@@ -84,6 +94,65 @@ func NewMetrics() *Metrics {
 				Help: "Current number of snapshots",
 			},
 		),
+
+		// Storage and compaction metrics
+		WALSegmentsTotal: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "raftkv_wal_segments_total",
+				Help: "Number of WAL segments",
+			},
+		),
+
+		WALSizeBytes: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "raftkv_wal_size_bytes",
+				Help: "Total WAL disk usage in bytes",
+			},
+		),
+
+		WALEntriesCompactedTotal: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Name: "raftkv_wal_entries_compacted_total",
+				Help: "Total number of WAL entries compacted",
+			},
+		),
+
+		RaftLogEntriesTotal: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "raftkv_raft_log_entries_total",
+				Help: "Total Raft log entries",
+			},
+		),
+
+		RaftLogSizeBytes: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "raftkv_raft_log_size_bytes",
+				Help: "Raft log disk usage in bytes",
+			},
+		),
+
+		SnapshotSizeBytes: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "raftkv_snapshot_size_bytes",
+				Help: "Latest snapshot size in bytes",
+			},
+		),
+
+		SnapshotCreationDuration: promauto.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "raftkv_snapshot_creation_duration_seconds",
+				Help:    "Snapshot creation duration",
+				Buckets: prometheus.DefBuckets,
+			},
+		),
+
+		CompactionDuration: promauto.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "raftkv_compaction_duration_seconds",
+				Help:    "WAL compaction duration",
+				Buckets: prometheus.DefBuckets,
+			},
+		),
 	}
 
 	return m
@@ -104,4 +173,25 @@ func (m *Metrics) RecordStorageOperation(operation, status string, duration floa
 func (m *Metrics) UpdateStorageMetrics(keyCount, snapshotCount int64) {
 	m.StorageKeysTotal.Set(float64(keyCount))
 	m.StorageSnapshotsTotal.Set(float64(snapshotCount))
+}
+
+// Update WAL and compaction metrics
+func (m *Metrics) UpdateWALMetrics(segmentCount int, sizeBytes int64) {
+	m.WALSegmentsTotal.Set(float64(segmentCount))
+	m.WALSizeBytes.Set(float64(sizeBytes))
+}
+
+func (m *Metrics) RecordWALCompaction(deletedCount int, duration float64) {
+	m.WALEntriesCompactedTotal.Add(float64(deletedCount))
+	m.CompactionDuration.Observe(duration)
+}
+
+func (m *Metrics) UpdateRaftLogMetrics(entryCount int, sizeBytes int64) {
+	m.RaftLogEntriesTotal.Set(float64(entryCount))
+	m.RaftLogSizeBytes.Set(float64(sizeBytes))
+}
+
+func (m *Metrics) RecordSnapshotCreation(sizeBytes int64, duration float64) {
+	m.SnapshotSizeBytes.Set(float64(sizeBytes))
+	m.SnapshotCreationDuration.Observe(duration)
 }

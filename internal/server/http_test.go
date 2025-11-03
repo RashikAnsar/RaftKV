@@ -101,7 +101,16 @@ func getTestMetrics() *observability.Metrics {
 }
 
 func setupTestServer(t *testing.T) (*HTTPServer, storage.Store) {
-	store := storage.NewMemoryStore()
+	store, err := storage.NewDurableStore(storage.DurableStoreConfig{
+		DataDir:       t.TempDir(),
+		SyncOnWrite:   false,
+		SnapshotEvery: 100,
+	})
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+
 	logger, err := observability.NewDevelopmentLogger()
 	if err != nil {
 		t.Fatalf("Failed to create logger: %v", err)

@@ -123,9 +123,10 @@ func main() {
 			logger.Fatal("Failed to elect leader", zap.Error(err))
 		}
 
+		leaderAddr, _ := raftNode.GetLeader()
 		logger.Info("Raft cluster ready",
 			zap.String("state", raftNode.GetState()),
-			zap.String("leader", raftNode.GetLeader()),
+			zap.String("leader", leaderAddr),
 		)
 	}
 

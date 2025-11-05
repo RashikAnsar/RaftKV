@@ -24,6 +24,8 @@ type RaftNode struct {
 	transport *raft.NetworkTransport
 	config    *raft.Config
 	logger    *zap.Logger
+	NodeID    string // Node ID (exported for testing)
+	RaftAddr  string // Raft address (exported for testing)
 }
 
 type RaftConfig struct {
@@ -105,6 +107,8 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 		transport: transport,
 		config:    raftConfig,
 		logger:    config.Logger,
+		NodeID:    config.NodeID,
+		RaftAddr:  config.RaftAddr,
 	}
 
 	// Bootstrap cluster if this is the first node
@@ -177,10 +181,10 @@ func (r *RaftNode) IsLeader() bool {
 	return r.raft.State() == raft.Leader
 }
 
-// GetLeader returns the current leader address
-func (r *RaftNode) GetLeader() string {
-	addr, _ := r.raft.LeaderWithID()
-	return string(addr)
+// GetLeader returns the current leader address and ID
+func (r *RaftNode) GetLeader() (string, string) {
+	addr, id := r.raft.LeaderWithID()
+	return string(addr), string(id)
 }
 
 // GetState returns the current Raft state
@@ -199,6 +203,11 @@ func (r *RaftNode) GetState() string {
 	}
 }
 
+// Join adds a new node to the cluster (alias for AddVoter with default timeout)
+func (r *RaftNode) Join(nodeID, addr string) error {
+	return r.AddVoter(nodeID, addr, 10*time.Second)
+}
+
 // AddVoter adds a new voting member to the cluster
 func (r *RaftNode) AddVoter(nodeID, addr string, timeout time.Duration) error {
 	r.logger.Info("Adding voter to cluster",
@@ -215,8 +224,13 @@ func (r *RaftNode) AddVoter(nodeID, addr string, timeout time.Duration) error {
 	return nil
 }
 
-// RemoveServer removes a node from the cluster
-func (r *RaftNode) RemoveServer(nodeID string, timeout time.Duration) error {
+// RemoveServer removes a node from the cluster (with default timeout)
+func (r *RaftNode) RemoveServer(nodeID string) error {
+	return r.RemoveServerWithTimeout(nodeID, 10*time.Second)
+}
+
+// RemoveServerWithTimeout removes a node from the cluster with custom timeout
+func (r *RaftNode) RemoveServerWithTimeout(nodeID string, timeout time.Duration) error {
 	r.logger.Info("Removing server from cluster", zap.String("node_id", nodeID))
 
 	future := r.raft.RemoveServer(raft.ServerID(nodeID), 0, timeout)
@@ -249,8 +263,9 @@ func (r *RaftNode) WaitForLeader(timeout time.Duration) error {
 	for {
 		select {
 		case <-ticker.C:
-			if leader := r.GetLeader(); leader != "" {
-				r.logger.Info("Leader elected", zap.String("leader", leader))
+			leaderAddr, _ := r.GetLeader()
+			if leaderAddr != "" {
+				r.logger.Info("Leader elected", zap.String("leader", leaderAddr))
 				return nil
 			}
 		case <-timer.C:

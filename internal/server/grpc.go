@@ -95,9 +95,9 @@ func (s *GRPCServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRespon
 
 	// If consistent read is required, check if we're the leader
 	if req.Consistent && !s.raftNode.IsLeader() {
-		leader := s.raftNode.GetLeader()
+		leaderAddr, _ := s.raftNode.GetLeader()
 		return nil, status.Errorf(codes.FailedPrecondition,
-			"consistent read requires leader (current leader: %s)", leader)
+			"consistent read requires leader (current leader: %s)", leaderAddr)
 	}
 
 	// Perform read
@@ -147,12 +147,12 @@ func (s *GRPCServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRespon
 
 	// Check if we're the leader
 	if !s.raftNode.IsLeader() {
-		leader := s.raftNode.GetLeader()
+		leaderAddr, _ := s.raftNode.GetLeader()
 		return &pb.PutResponse{
 			Success: false,
 			Error:   "not the leader",
-			Leader:  leader,
-		}, status.Errorf(codes.FailedPrecondition, "not the leader, redirect to: %s", leader)
+			Leader:  leaderAddr,
+		}, status.Errorf(codes.FailedPrecondition, "not the leader, redirect to: %s", leaderAddr)
 	}
 
 	// Create command and apply to Raft
@@ -167,16 +167,18 @@ func (s *GRPCServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRespon
 			zap.String("key", req.Key),
 			zap.Error(err),
 		)
+		leaderAddr, _ := s.raftNode.GetLeader()
 		return &pb.PutResponse{
 			Success: false,
 			Error:   err.Error(),
-			Leader:  s.raftNode.GetLeader(),
+			Leader:  leaderAddr,
 		}, status.Error(codes.Internal, "failed to apply command")
 	}
 
+	leaderAddr, _ := s.raftNode.GetLeader()
 	return &pb.PutResponse{
 		Success: true,
-		Leader:  s.raftNode.GetLeader(),
+		Leader:  leaderAddr,
 	}, nil
 }
 
@@ -197,12 +199,12 @@ func (s *GRPCServer) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.Del
 
 	// Check if we're the leader
 	if !s.raftNode.IsLeader() {
-		leader := s.raftNode.GetLeader()
+		leaderAddr, _ := s.raftNode.GetLeader()
 		return &pb.DeleteResponse{
 			Success: false,
 			Error:   "not the leader",
-			Leader:  leader,
-		}, status.Errorf(codes.FailedPrecondition, "not the leader, redirect to: %s", leader)
+			Leader:  leaderAddr,
+		}, status.Errorf(codes.FailedPrecondition, "not the leader, redirect to: %s", leaderAddr)
 	}
 
 	// Create command and apply to Raft
@@ -216,16 +218,18 @@ func (s *GRPCServer) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.Del
 			zap.String("key", req.Key),
 			zap.Error(err),
 		)
+		leaderAddr, _ := s.raftNode.GetLeader()
 		return &pb.DeleteResponse{
 			Success: false,
 			Error:   err.Error(),
-			Leader:  s.raftNode.GetLeader(),
+			Leader:  leaderAddr,
 		}, status.Error(codes.Internal, "failed to apply command")
 	}
 
+	leaderAddr, _ := s.raftNode.GetLeader()
 	return &pb.DeleteResponse{
 		Success: true,
-		Leader:  s.raftNode.GetLeader(),
+		Leader:  leaderAddr,
 	}, nil
 }
 
@@ -271,13 +275,14 @@ func (s *GRPCServer) GetStats(ctx context.Context, req *pb.StatsRequest) (*pb.St
 		fmt.Sscanf(val, "%d", &lastIndex)
 	}
 
+	leaderAddr, _ := s.raftNode.GetLeader()
 	return &pb.StatsResponse{
 		KeyCount:      uint64(stats.KeyCount),
 		GetCount:      uint64(stats.Gets),
 		PutCount:      uint64(stats.Puts),
 		DeleteCount:   uint64(stats.Deletes),
 		RaftState:     s.raftNode.GetState(),
-		RaftLeader:    s.raftNode.GetLeader(),
+		RaftLeader:    leaderAddr,
 		RaftTerm:      term,
 		RaftLastIndex: lastIndex,
 	}, nil

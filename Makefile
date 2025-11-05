@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli test test-storage test-compaction test-coverage bench bench-compaction bench-grpc bench-http clean fmt help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto
+.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto
 
 # Variables
 BINARY_NAME=kvstore
@@ -51,6 +51,14 @@ test-storage:
 test-compaction:
 	@echo "Running compaction tests..."
 	$(GO) test -v -race -run="Compaction|Snapshot" ./internal/storage
+
+test-integration:
+	@echo "Running integration tests..."
+	$(GO) test -v -timeout=300s ./test/integration
+
+test-integration-fast:
+	@echo "Running fast integration tests (single test)..."
+	$(GO) test -v -timeout=60s -run="TestThreeNodeCluster_BasicOperations" ./test/integration
 
 test-coverage:
 	@echo "Running tests with coverage..."

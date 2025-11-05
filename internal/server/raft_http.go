@@ -143,7 +143,8 @@ func (s *RaftHTTPServer) handleGet(w http.ResponseWriter, r *http.Request) {
 	// Return raw bytes
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-Raft-State", s.raft.GetState())
-	w.Header().Set("X-Raft-Leader", s.raft.GetLeader())
+	leaderAddr, _ := s.raft.GetLeader()
+	w.Header().Set("X-Raft-Leader", leaderAddr)
 	w.WriteHeader(http.StatusOK)
 	w.Write(value)
 }
@@ -161,16 +162,16 @@ func (s *RaftHTTPServer) handlePut(w http.ResponseWriter, r *http.Request) {
 	// Check if we're the leader
 	if !s.raft.IsLeader() {
 		// Return redirect to leader
-		leader := s.raft.GetLeader()
-		if leader == "" {
+		leaderAddr, _ := s.raft.GetLeader()
+		if leaderAddr == "" {
 			s.respondError(w, http.StatusServiceUnavailable, "no leader elected")
 			return
 		}
 
 		// Return 307 redirect with leader address
-		w.Header().Set("Location", fmt.Sprintf("http://%s%s", leader, r.URL.Path))
-		w.Header().Set("X-Raft-Leader", leader)
-		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leader))
+		w.Header().Set("Location", fmt.Sprintf("http://%s%s", leaderAddr, r.URL.Path))
+		w.Header().Set("X-Raft-Leader", leaderAddr)
+		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leaderAddr))
 		return
 	}
 
@@ -197,7 +198,8 @@ func (s *RaftHTTPServer) handlePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("X-Raft-Leader", s.raft.GetLeader())
+	leaderAddr, _ := s.raft.GetLeader()
+	w.Header().Set("X-Raft-Leader", leaderAddr)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -214,15 +216,15 @@ func (s *RaftHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 	// Check if we're the leader
 	if !s.raft.IsLeader() {
 		// Return redirect to leader
-		leader := s.raft.GetLeader()
-		if leader == "" {
+		leaderAddr, _ := s.raft.GetLeader()
+		if leaderAddr == "" {
 			s.respondError(w, http.StatusServiceUnavailable, "no leader elected")
 			return
 		}
 
-		w.Header().Set("Location", fmt.Sprintf("http://%s%s", leader, r.URL.Path))
-		w.Header().Set("X-Raft-Leader", leader)
-		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leader))
+		w.Header().Set("Location", fmt.Sprintf("http://%s%s", leaderAddr, r.URL.Path))
+		w.Header().Set("X-Raft-Leader", leaderAddr)
+		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leaderAddr))
 		return
 	}
 
@@ -241,7 +243,8 @@ func (s *RaftHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("X-Raft-Leader", s.raft.GetLeader())
+	leaderAddr, _ := s.raft.GetLeader()
+	w.Header().Set("X-Raft-Leader", leaderAddr)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -265,12 +268,13 @@ func (s *RaftHTTPServer) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	leaderAddr, _ := s.raft.GetLeader()
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"keys":   keys,
 		"count":  len(keys),
 		"prefix": prefix,
 		"limit":  limit,
-		"leader": s.raft.GetLeader(),
+		"leader": leaderAddr,
 		"state":  s.raft.GetState(),
 	})
 }
@@ -279,9 +283,9 @@ func (s *RaftHTTPServer) handleList(w http.ResponseWriter, r *http.Request) {
 func (s *RaftHTTPServer) handleJoin(w http.ResponseWriter, r *http.Request) {
 	// Only leader can add nodes
 	if !s.raft.IsLeader() {
-		leader := s.raft.GetLeader()
-		w.Header().Set("X-Raft-Leader", leader)
-		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leader))
+		leaderAddr, _ := s.raft.GetLeader()
+		w.Header().Set("X-Raft-Leader", leaderAddr)
+		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leaderAddr))
 		return
 	}
 
@@ -323,9 +327,9 @@ func (s *RaftHTTPServer) handleJoin(w http.ResponseWriter, r *http.Request) {
 func (s *RaftHTTPServer) handleRemove(w http.ResponseWriter, r *http.Request) {
 	// Only leader can remove nodes
 	if !s.raft.IsLeader() {
-		leader := s.raft.GetLeader()
-		w.Header().Set("X-Raft-Leader", leader)
-		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leader))
+		leaderAddr, _ := s.raft.GetLeader()
+		w.Header().Set("X-Raft-Leader", leaderAddr)
+		s.respondError(w, http.StatusTemporaryRedirect, fmt.Sprintf("not leader, redirect to %s", leaderAddr))
 		return
 	}
 
@@ -345,7 +349,7 @@ func (s *RaftHTTPServer) handleRemove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Remove server from cluster
-	if err := s.raft.RemoveServer(req.NodeID, 10*time.Second); err != nil {
+	if err := s.raft.RemoveServer(req.NodeID); err != nil {
 		s.logger.Error("Failed to remove server",
 			zap.String("node_id", req.NodeID),
 			zap.Error(err),
@@ -385,8 +389,9 @@ func (s *RaftHTTPServer) handleNodes(w http.ResponseWriter, r *http.Request) {
 
 // handleLeader returns the current leader
 func (s *RaftHTTPServer) handleLeader(w http.ResponseWriter, r *http.Request) {
+	leaderAddr, _ := s.raft.GetLeader()
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
-		"leader": s.raft.GetLeader(),
+		"leader": leaderAddr,
 		"state":  s.raft.GetState(),
 	})
 }
@@ -406,17 +411,19 @@ func (s *RaftHTTPServer) handleSnapshot(w http.ResponseWriter, r *http.Request) 
 
 // handleHealth returns server health status
 func (s *RaftHTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	leaderAddr, _ := s.raft.GetLeader()
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "healthy",
 		"state":  s.raft.GetState(),
-		"leader": s.raft.GetLeader(),
+		"leader": leaderAddr,
 	})
 }
 
 // handleReady returns readiness status
 func (s *RaftHTTPServer) handleReady(w http.ResponseWriter, r *http.Request) {
 	// Node is ready if there's a leader
-	if s.raft.GetLeader() == "" {
+	leaderAddr, _ := s.raft.GetLeader()
+	if leaderAddr == "" {
 		s.respondError(w, http.StatusServiceUnavailable, "no leader elected")
 		return
 	}
@@ -424,7 +431,7 @@ func (s *RaftHTTPServer) handleReady(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "ready",
 		"state":  s.raft.GetState(),
-		"leader": s.raft.GetLeader(),
+		"leader": leaderAddr,
 	})
 }
 
@@ -446,12 +453,13 @@ func (s *RaftHTTPServer) handleStats(w http.ResponseWriter, r *http.Request) {
 
 // handleRoot returns API information
 func (s *RaftHTTPServer) handleRoot(w http.ResponseWriter, r *http.Request) {
+	leaderAddr, _ := s.raft.GetLeader()
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"service": "RaftKV",
 		"version": "1.0.0",
 		"mode":    "cluster",
 		"state":   s.raft.GetState(),
-		"leader":  s.raft.GetLeader(),
+		"leader":  leaderAddr,
 		"endpoints": map[string]string{
 			"GET /keys/{key}":      "Get value",
 			"PUT /keys/{key}":      "Put value (leader only)",

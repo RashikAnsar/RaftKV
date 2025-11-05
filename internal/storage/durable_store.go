@@ -12,6 +12,7 @@ type DurableStore struct {
 	mu              sync.Mutex // Protects walIndex, opsSinceSnapshot, and Raft tracking
 	memory          *MemoryStore
 	wal             *WAL
+	batchedWAL      *BatchedWAL // Optional batched WAL wrapper
 	snapshotManager *SnapshotManager
 	config          DurableStoreConfig // Store config for compaction settings
 
@@ -27,8 +28,9 @@ type DurableStore struct {
 
 type DurableStoreConfig struct {
 	DataDir       string
-	SyncOnWrite   bool // true = durable but slower, false = faster but risk data loss
-	SnapshotEvery int  // Take snapshot every N operations (0 = disabled)
+	SyncOnWrite   bool        // true = durable but slower, false = faster but risk data loss
+	SnapshotEvery int         // Take snapshot every N operations (0 = disabled)
+	BatchConfig   BatchConfig // Batching configuration (optional, improves write throughput)
 
 	// Compaction settings
 	CompactionEnabled bool   // Enable WAL compaction after snapshots
@@ -47,6 +49,11 @@ func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 		config.CompactionMargin = 100 // Keep 100 entries before snapshot
 	}
 
+	// Default batch config if batching is enabled but not configured
+	if config.BatchConfig.Enabled && config.BatchConfig.MaxBatchSize == 0 {
+		config.BatchConfig = DefaultBatchConfig()
+	}
+
 	// Create WAL
 	wal, err := NewWAL(WALConfig{
 		Dir:         config.DataDir,
@@ -55,6 +62,9 @@ func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create WAL: %w", err)
 	}
+
+	// Wrap with batched WAL if enabled
+	batchedWAL := NewBatchedWAL(wal, config.BatchConfig)
 
 	// Create snapshot manager
 	snapshotManager, err := NewSnapshotManager(config.DataDir)
@@ -69,6 +79,7 @@ func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 	store := &DurableStore{
 		memory:          memory,
 		wal:             wal,
+		batchedWAL:      batchedWAL,
 		snapshotManager: snapshotManager,
 		config:          config, // Store config for compaction
 		snapshotEvery:   config.SnapshotEvery,
@@ -176,7 +187,15 @@ func (s *DurableStore) Put(ctx context.Context, key string, value []byte) error 
 		Value:     value,
 	}
 
-	if err := s.wal.Append(entry); err != nil {
+	// Use batched WAL if available, otherwise fall back to direct WAL
+	var err error
+	if s.batchedWAL != nil {
+		err = s.batchedWAL.Append(ctx, entry)
+	} else {
+		err = s.wal.Append(entry)
+	}
+
+	if err != nil {
 		return fmt.Errorf("failed to write to WAL: %w", err)
 	}
 
@@ -215,7 +234,15 @@ func (s *DurableStore) Delete(ctx context.Context, key string) error {
 		Key:       key,
 	}
 
-	if err := s.wal.Append(entry); err != nil {
+	// Use batched WAL if available, otherwise fall back to direct WAL
+	var err error
+	if s.batchedWAL != nil {
+		err = s.batchedWAL.Append(ctx, entry)
+	} else {
+		err = s.wal.Append(entry)
+	}
+
+	if err != nil {
 		return fmt.Errorf("failed to write to WAL: %w", err)
 	}
 
@@ -363,7 +390,12 @@ func (s *DurableStore) Stats() Stats {
 }
 
 func (s *DurableStore) Close() error {
-	if err := s.wal.Close(); err != nil {
+	// Close batched WAL first (flushes pending operations)
+	if s.batchedWAL != nil {
+		if err := s.batchedWAL.Close(); err != nil {
+			return fmt.Errorf("failed to close batched WAL: %w", err)
+		}
+	} else if err := s.wal.Close(); err != nil {
 		return fmt.Errorf("failed to close WAL: %w", err)
 	}
 
@@ -375,6 +407,10 @@ func (s *DurableStore) Close() error {
 }
 
 func (s *DurableStore) Sync() error {
+	// Sync batched WAL if available
+	if s.batchedWAL != nil {
+		return s.batchedWAL.Sync()
+	}
 	return s.wal.Sync()
 }
 

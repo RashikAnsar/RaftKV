@@ -169,6 +169,59 @@ func (w *WAL) Append(entry *WALEntry) error {
 	return nil
 }
 
+// AppendBatch appends multiple entries with a single fsync at the end
+// This is much more efficient than calling Append multiple times
+func (w *WAL) AppendBatch(entries []*WALEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	// Serialize all entries first
+	var totalSize int64
+	serialized := make([][]byte, len(entries))
+	for i, entry := range entries {
+		data, err := w.serializeEntry(entry)
+		if err != nil {
+			return fmt.Errorf("failed to serialize entry %d: %w", i, err)
+		}
+		serialized[i] = data
+		totalSize += int64(len(data))
+	}
+
+	// Check if we need to rotate (simplified: just check total size)
+	if w.currentSize+totalSize > w.maxSegmentSize {
+		if err := w.rotateSegment(); err != nil {
+			return fmt.Errorf("failed to rotate segment: %w", err)
+		}
+	}
+
+	// Write all entries
+	for _, data := range serialized {
+		n, err := w.currentWriter.Write(data)
+		if err != nil {
+			return fmt.Errorf("failed to write entry: %w", err)
+		}
+		w.currentSize += int64(n)
+	}
+
+	// Flush buffer
+	if err := w.currentWriter.Flush(); err != nil {
+		return fmt.Errorf("failed to flush: %w", err)
+	}
+
+	// Single fsync for all entries
+	if w.syncOnWrite {
+		if err := w.currentFile.Sync(); err != nil {
+			return fmt.Errorf("failed to sync: %w", err)
+		}
+	}
+
+	return nil
+}
+
 func (w *WAL) serializeEntry(entry *WALEntry) ([]byte, error) {
 	keyLen := len(entry.Key)
 	valueLen := len(entry.Value)

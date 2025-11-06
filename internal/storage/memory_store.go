@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -128,6 +129,16 @@ func (s *MemoryStore) List(ctx context.Context, prefix string, limit int) ([]str
 	}
 
 	return keys, nil
+}
+
+func (s *MemoryStore) Snapshot(ctx context.Context) (string, error) {
+	// Not implemented for memory store (no persistence)
+	return "", errors.New("snapshot not supported by memory store")
+}
+
+func (s *MemoryStore) Restore(ctx context.Context, snapshotPath string) error {
+	// Not implemented for memory store (no persistence)
+	return errors.New("restore not supported by memory store")
 }
 
 func (s *MemoryStore) Stats() Stats {

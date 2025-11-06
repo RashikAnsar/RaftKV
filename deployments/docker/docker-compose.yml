@@ -31,6 +31,8 @@ services:
       --raft-dir=/data/raft
       --data-dir=/data
       --bootstrap
+      --enable-cache=true
+      --cache-size=10000
       --log-level=info
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -69,6 +71,8 @@ services:
       --raft-dir=/data/raft
       --data-dir=/data
       --join=http://node1:8080
+      --enable-cache=true
+      --cache-size=10000
       --log-level=info
     depends_on:
       node1:
@@ -110,6 +114,8 @@ services:
       --raft-dir=/data/raft
       --data-dir=/data
       --join=http://node1:8080
+      --enable-cache=true
+      --cache-size=10000
       --log-level=info
     depends_on:
       node1:

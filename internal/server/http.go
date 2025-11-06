@@ -81,6 +81,11 @@ func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
 	return srv
 }
 
+// Handler returns the HTTP handler for the server (used for testing)
+func (s *HTTPServer) Handler() http.Handler {
+	return s.router
+}
+
 // registerRoutes registers all HTTP routes
 func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64) {
 	// Key operations
@@ -262,12 +267,25 @@ func (s *HTTPServer) handleReady(w http.ResponseWriter, r *http.Request) {
 func (s *HTTPServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats := s.store.Stats()
 
-	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"gets":      stats.Gets,
 		"puts":      stats.Puts,
 		"deletes":   stats.Deletes,
 		"key_count": stats.KeyCount,
-	})
+	}
+
+	// Add cache stats if available
+	if stats.CacheHits > 0 || stats.CacheMisses > 0 {
+		response["cache"] = map[string]interface{}{
+			"hits":       stats.CacheHits,
+			"misses":     stats.CacheMisses,
+			"hit_rate":   stats.CacheHitRate,
+			"size":       stats.CacheSize,
+			"evictions":  stats.CacheEvictions,
+		}
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
 }
 
 // handleRoot returns API information

@@ -67,24 +67,8 @@ test-coverage:
 	@echo "Coverage report: coverage.html"
 
 bench:
-	@echo "Running storage benchmarks..."
-	$(GO) test -bench=. -benchmem ./internal/storage
-
-bench-compaction:
-	@echo "Running compaction benchmarks..."
-	$(GO) test -bench=BenchmarkWALCompaction -benchmem ./internal/storage -run=^$
-
-bench-grpc:
-	@echo "Running gRPC server benchmarks..."
-	$(GO) test ./internal/server -bench=BenchmarkGRPCServer -benchmem -run=^$ -timeout 60s
-
-bench-http:
-	@echo "Running HTTP server benchmarks..."
-	$(GO) test ./internal/server -bench=BenchmarkHTTPServer -benchmem -run=^$ -timeout 60s
-
-bench-all:
 	@echo "Running all benchmarks..."
-	@./scripts/benchmark.sh -t all -o benchmarks/results.txt
+	@./scripts/benchmark.sh -t all
 
 bench-storage:
 	@echo "Running storage benchmarks..."
@@ -94,13 +78,26 @@ bench-server:
 	@echo "Running server benchmarks..."
 	@./scripts/benchmark.sh -t server
 
+bench-batch:
+	@echo "Running batch write benchmarks..."
+	@./scripts/benchmark.sh -t batch
+
 bench-cluster:
-	@echo "Running cluster benchmarks..."
+	@echo "Note: Cluster benchmarks are skipped (.skip files)"
+	@echo "See test/benchmark/CLUSTER_BENCHMARKS.md for details"
 	@./scripts/benchmark.sh -t cluster
+
+bench-results:
+	@echo "Running all benchmarks with results file..."
+	@./scripts/benchmark.sh -t all -o benchmarks/results.txt
 
 bench-profile:
 	@echo "Running benchmarks with profiling..."
 	@./scripts/benchmark.sh -t all -m -p -o benchmarks/results.txt
+
+bench-compare:
+	@echo "Running benchmarks for comparison (5 iterations)..."
+	@./scripts/benchmark.sh -t all -c 5 -o benchmarks/baseline.txt
 
 fmt:
 	@echo "Formatting code..."
@@ -310,11 +307,18 @@ help:
 	@echo "  make test            - Run all tests with race detector"
 	@echo "  make test-storage    - Run storage tests only"
 	@echo "  make test-compaction - Run compaction and snapshot tests"
+	@echo "  make test-integration - Run integration tests"
 	@echo "  make test-coverage   - Run tests with coverage report"
-	@echo "  make bench           - Run storage benchmarks"
-	@echo "  make bench-compaction - Run compaction benchmarks"
-	@echo "  make bench-grpc      - Run gRPC server benchmarks"
-	@echo "  make bench-http      - Run HTTP server benchmarks"
+	@echo ""
+	@echo "Benchmarks:"
+	@echo "  make bench           - Run all benchmarks"
+	@echo "  make bench-storage   - Run storage benchmarks"
+	@echo "  make bench-server    - Run HTTP server benchmarks"
+	@echo "  make bench-batch     - Run batch write benchmarks"
+	@echo "  make bench-cluster   - Info about cluster benchmarks (skipped)"
+	@echo "  make bench-results   - Run all benchmarks, save to file"
+	@echo "  make bench-profile   - Run benchmarks with CPU/memory profiling"
+	@echo "  make bench-compare   - Run benchmarks 5x for comparison baseline"
 	@echo ""
 	@echo "Docker deployment:"
 	@echo "  make docker-build    - Build Docker image"

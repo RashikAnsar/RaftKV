@@ -52,28 +52,32 @@ func LoggingMiddleware(logger *observability.Logger) func(http.Handler) http.Han
 			// Add request ID to response header
 			rw.Header().Set("X-Request-ID", requestID)
 
-			// Log request
-			logger.Info("HTTP request started",
-				zap.String("request_id", requestID),
-				zap.String("method", r.Method),
-				zap.String("path", r.URL.Path),
-				zap.String("remote_addr", r.RemoteAddr),
-				zap.String("user_agent", r.UserAgent()),
-			)
+			// Log request if logger is provided
+			if logger != nil {
+				logger.Info("HTTP request started",
+					zap.String("request_id", requestID),
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+					zap.String("remote_addr", r.RemoteAddr),
+					zap.String("user_agent", r.UserAgent()),
+				)
+			}
 
 			// Call next handler
 			next.ServeHTTP(rw, r)
 
-			// Log response
-			duration := time.Since(ctx.Value(startTimeKey).(time.Time))
-			logger.Info("HTTP request completed",
-				zap.String("request_id", requestID),
-				zap.String("method", r.Method),
-				zap.String("path", r.URL.Path),
-				zap.Int("status", rw.statusCode),
-				zap.Int("bytes", rw.bytesWritten),
-				zap.Duration("duration", duration),
-			)
+			// Log response if logger is provided
+			if logger != nil {
+				duration := time.Since(ctx.Value(startTimeKey).(time.Time))
+				logger.Info("HTTP request completed",
+					zap.String("request_id", requestID),
+					zap.String("method", r.Method),
+					zap.String("path", r.URL.Path),
+					zap.Int("status", rw.statusCode),
+					zap.Int("bytes", rw.bytesWritten),
+					zap.Duration("duration", duration),
+				)
+			}
 		})
 	}
 }
@@ -90,16 +94,18 @@ func MetricsMiddleware(metrics *observability.Metrics) func(http.Handler) http.H
 
 			next.ServeHTTP(rw, r)
 
-			// Record metrics
-			duration := time.Since(start).Seconds()
-			metrics.RecordHTTPRequest(
-				r.Method,
-				r.URL.Path,
-				http.StatusText(rw.statusCode),
-				duration,
-				int(r.ContentLength),
-				rw.bytesWritten,
-			)
+			// Record metrics if metrics object is provided
+			if metrics != nil {
+				duration := time.Since(start).Seconds()
+				metrics.RecordHTTPRequest(
+					r.Method,
+					r.URL.Path,
+					http.StatusText(rw.statusCode),
+					duration,
+					int(r.ContentLength),
+					rw.bytesWritten,
+				)
+			}
 		})
 	}
 }
@@ -110,11 +116,13 @@ func RecoveryMiddleware(logger *observability.Logger) func(http.Handler) http.Ha
 			defer func() {
 				if err := recover(); err != nil {
 					requestID := GetRequestID(r.Context())
-					logger.Error("Panic recovered",
-						zap.String("request_id", requestID),
-						zap.Any("error", err),
-						zap.Stack("stacktrace"),
-					)
+					if logger != nil {
+						logger.Error("Panic recovered",
+							zap.String("request_id", requestID),
+							zap.Any("error", err),
+							zap.Stack("stacktrace"),
+						)
+					}
 
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				}

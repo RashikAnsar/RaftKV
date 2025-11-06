@@ -45,6 +45,11 @@ type Config struct {
 	MaxRequestSize  int64
 	EnableRateLimit bool
 	RateLimit       int
+
+	// Cache config
+	EnableCache   bool
+	CacheSize     int
+	CacheTTL      time.Duration
 }
 
 func main() {
@@ -83,15 +88,29 @@ func main() {
 
 	var store storage.Store = durableStore
 
+	// Wrap with cache if enabled
+	if config.EnableCache {
+		store = storage.NewCachedStore(durableStore, storage.CacheConfig{
+			MaxSize: config.CacheSize,
+			TTL:     config.CacheTTL,
+		})
+		logger.Info("Read cache enabled",
+			zap.Int("cache_size", config.CacheSize),
+			zap.Duration("cache_ttl", config.CacheTTL),
+		)
+	}
+
 	if config.EnableRaft {
 		logger.Info("Storage initialized with DurableStore (Raft cluster mode)",
 			zap.String("data_dir", config.DataDir),
 			zap.Bool("sync_on_write", config.SyncOnWrite),
+			zap.Bool("cache_enabled", config.EnableCache),
 		)
 	} else {
 		logger.Info("Storage initialized with DurableStore (single-node mode)",
 			zap.String("data_dir", config.DataDir),
 			zap.Bool("sync_on_write", config.SyncOnWrite),
+			zap.Bool("cache_enabled", config.EnableCache),
 		)
 	}
 
@@ -242,10 +261,16 @@ func parseFlags() Config {
 	flag.BoolVar(&config.EnableRateLimit, "enable-rate-limit", false, "Enable rate limiting")
 	flag.IntVar(&config.RateLimit, "rate-limit", 1000, "Requests per second limit")
 
+	// Cache flags
+	flag.BoolVar(&config.EnableCache, "enable-cache", true, "Enable read cache")
+	flag.IntVar(&config.CacheSize, "cache-size", 10000, "Max number of entries in cache")
+	cacheTTLSec := flag.Int("cache-ttl", 0, "Cache TTL in seconds (0 = no expiration)")
+
 	flag.Parse()
 
 	config.ReadTimeout = time.Duration(*readTimeoutSec) * time.Second
 	config.WriteTimeout = time.Duration(*writeTimeoutSec) * time.Second
+	config.CacheTTL = time.Duration(*cacheTTLSec) * time.Second
 
 	return config
 }

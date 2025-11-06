@@ -4,7 +4,7 @@
 # Usage: ./scripts/benchmark.sh [options]
 #
 # Options:
-#   -t, --type TYPE     Benchmark type: storage, server, cluster, all (default: all)
+#   -t, --type TYPE     Benchmark type: storage, server, batch, cluster, all (default: all)
 #   -o, --output FILE   Output file for results (default: stdout)
 #   -c, --count N       Number of benchmark iterations (default: 1)
 #   -m, --memory        Include memory profiling
@@ -63,11 +63,11 @@ done
 
 # Validate benchmark type
 case $BENCH_TYPE in
-    storage|server|cluster|all)
+    storage|server|batch|cluster|all)
         ;;
     *)
         echo -e "${RED}Invalid benchmark type: $BENCH_TYPE${NC}"
-        echo "Valid types: storage, server, cluster, all"
+        echo "Valid types: storage, server, batch, cluster, all"
         exit 1
         ;;
 esac
@@ -112,18 +112,25 @@ run_benchmark() {
 # Run benchmarks based on type
 case $BENCH_TYPE in
     storage)
-        run_benchmark "Storage" "BenchmarkMemoryStore|BenchmarkDurableStore|BenchmarkSnapshot"
+        run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery"
         ;;
     server)
-        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkGRPCServer|BenchmarkHTTPvsGRPC"
+        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached"
+        ;;
+    batch)
+        run_benchmark "Batch Writes" "BenchmarkBatchedWrites"
         ;;
     cluster)
-        run_benchmark "Cluster" "BenchmarkCluster"
+        echo -e "${YELLOW}Note: Cluster benchmarks are skipped (.skip files)${NC}"
+        echo -e "See test/benchmark/CLUSTER_BENCHMARKS.md for details"
         ;;
     all)
-        run_benchmark "Storage" "BenchmarkMemoryStore|BenchmarkDurableStore|BenchmarkSnapshot"
-        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkGRPCServer|BenchmarkHTTPvsGRPC"
-        run_benchmark "Cluster" "BenchmarkCluster"
+        run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery"
+        run_benchmark "Batch Writes" "BenchmarkBatchedWrites"
+        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached"
+        echo ""
+        echo -e "${YELLOW}Note: Cluster benchmarks are skipped (.skip files)${NC}"
+        echo -e "See test/benchmark/CLUSTER_BENCHMARKS.md for details"
         ;;
 esac
 
@@ -152,13 +159,43 @@ if [ -n "$OUTPUT_FILE" ]; then
 
     # Extract key metrics
     echo ""
-    echo -e "${YELLOW}=== Summary ===${NC}"
-    echo "Storage Performance:"
-    grep "ops/sec" "$OUTPUT_FILE" | grep -E "BenchmarkMemoryStore|BenchmarkDurableStore" | head -5
+    echo -e "${YELLOW}=== Performance Summary ===${NC}"
     echo ""
-    echo "Server Performance:"
-    grep "req/sec" "$OUTPUT_FILE" | grep -E "BenchmarkHTTPServer|BenchmarkGRPCServer" | head -5
+
+    echo -e "${BLUE}Storage Layer:${NC}"
+    grep -E "BenchmarkStorage.*-14" "$OUTPUT_FILE" | grep -E "Get|Put|Delete" | head -6 || echo "  No storage benchmarks found"
     echo ""
-    echo "Cluster Performance:"
-    grep -E "writes/sec|reads/sec|ops/sec" "$OUTPUT_FILE" | grep "BenchmarkCluster" | head -5
+
+    echo -e "${BLUE}HTTP API:${NC}"
+    grep -E "BenchmarkHTTPServer_(Sequential|Concurrent)" "$OUTPUT_FILE" | grep -E "GET|PUT|Workers" | head -6 || echo "  No server benchmarks found"
+    echo ""
+
+    echo -e "${BLUE}Cache Performance:${NC}"
+    grep -E "BenchmarkCachedVsUncached" "$OUTPUT_FILE" | head -2 || echo "  No cache benchmarks found"
+    echo ""
+
+    echo -e "${BLUE}Batch Writes:${NC}"
+    grep -E "BenchmarkBatchedWrites" "$OUTPUT_FILE" | grep -E "ops/sec" | head -3 || echo "  No batch benchmarks found"
+    echo ""
+
+    # Extract top performance numbers
+    echo -e "${YELLOW}=== Top Performance Metrics ===${NC}"
+
+    # Storage ops/sec
+    STORAGE_OPS=$(grep -oE "[0-9.]+ ops/sec" "$OUTPUT_FILE" | head -1 | awk '{print $1}')
+    if [ -n "$STORAGE_OPS" ]; then
+        echo -e "  Storage: ${GREEN}${STORAGE_OPS}${NC} ops/sec"
+    fi
+
+    # HTTP req/sec
+    HTTP_REQ=$(grep -oE "[0-9.]+ req/sec" "$OUTPUT_FILE" | sort -rn | head -1 | awk '{print $1}')
+    if [ -n "$HTTP_REQ" ]; then
+        echo -e "  HTTP API: ${GREEN}${HTTP_REQ}${NC} req/sec"
+    fi
+
+    # Find peak throughput from Workers
+    PEAK_WORKERS=$(grep "Workers-" "$OUTPUT_FILE" | grep -oE "[0-9.]+ req/sec" | sort -rn | head -1 | awk '{print $1}')
+    if [ -n "$PEAK_WORKERS" ]; then
+        echo -e "  Peak (concurrent): ${GREEN}${PEAK_WORKERS}${NC} req/sec"
+    fi
 fi

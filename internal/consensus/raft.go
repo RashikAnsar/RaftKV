@@ -1,12 +1,14 @@
 package consensus
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -131,6 +133,42 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 		}
 
 		config.Logger.Info("Cluster bootstrapped", zap.String("node_id", config.NodeID))
+	} else if config.JoinAddr != "" {
+		// Join existing cluster
+		config.Logger.Info("Attempting to join cluster",
+			zap.String("node_id", config.NodeID),
+			zap.String("join_addr", config.JoinAddr),
+		)
+
+		// Send join request to existing node
+		joinReq := map[string]string{
+			"node_id": config.NodeID,
+			"addr":    config.RaftAddr,
+		}
+		reqBody, err := json.Marshal(joinReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal join request: %w", err)
+		}
+
+		resp, err := http.Post(
+			config.JoinAddr+"/cluster/join",
+			"application/json",
+			bytes.NewReader(reqBody),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to send join request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("join request failed with status %d: %s", resp.StatusCode, string(body))
+		}
+
+		config.Logger.Info("Successfully joined cluster",
+			zap.String("node_id", config.NodeID),
+			zap.String("join_addr", config.JoinAddr),
+		)
 	}
 
 	return node, nil

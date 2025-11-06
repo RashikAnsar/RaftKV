@@ -1,0 +1,110 @@
+version: '3.8'
+
+# Simplified 3-node cluster without HAProxy
+# For development and testing
+
+services:
+  # Node 1 - Bootstrap node
+  node1:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+    container_name: raftkv-node1
+    hostname: node1
+    networks:
+      - raftkv-network
+    ports:
+      - "8081:8080"  # HTTP
+      - "9091:9090"  # gRPC
+    volumes:
+      - node1-data:/data
+    command: >
+      --raft
+      --grpc
+      --node-id=node1
+      --http-addr=:8080
+      --grpc-addr=:9090
+      --raft-addr=node1:7000
+      --raft-dir=/data/raft
+      --data-dir=/data
+      --bootstrap
+      --enable-cache=true
+      --cache-size=10000
+      --log-level=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 5s
+
+  # Node 2
+  node2:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+    container_name: raftkv-node2
+    hostname: node2
+    networks:
+      - raftkv-network
+    ports:
+      - "8082:8080"
+      - "9092:9090"
+    volumes:
+      - node2-data:/data
+    command: >
+      --raft
+      --grpc
+      --node-id=node2
+      --http-addr=:8080
+      --grpc-addr=:9090
+      --raft-addr=node2:7000
+      --raft-dir=/data/raft
+      --data-dir=/data
+      --join=http://node1:8080
+      --enable-cache=true
+      --cache-size=10000
+      --log-level=info
+    depends_on:
+      node1:
+        condition: service_healthy
+
+  # Node 3
+  node3:
+    build:
+      context: ../..
+      dockerfile: deployments/docker/Dockerfile
+    container_name: raftkv-node3
+    hostname: node3
+    networks:
+      - raftkv-network
+    ports:
+      - "8083:8080"
+      - "9093:9090"
+    volumes:
+      - node3-data:/data
+    command: >
+      --raft
+      --grpc
+      --node-id=node3
+      --http-addr=:8080
+      --grpc-addr=:9090
+      --raft-addr=node3:7000
+      --raft-dir=/data/raft
+      --data-dir=/data
+      --join=http://node1:8080
+      --enable-cache=true
+      --cache-size=10000
+      --log-level=info
+    depends_on:
+      node1:
+        condition: service_healthy
+
+networks:
+  raftkv-network:
+    driver: bridge
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:

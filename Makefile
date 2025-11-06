@@ -82,6 +82,26 @@ bench-http:
 	@echo "Running HTTP server benchmarks..."
 	$(GO) test ./internal/server -bench=BenchmarkHTTPServer -benchmem -run=^$ -timeout 60s
 
+bench-all:
+	@echo "Running all benchmarks..."
+	@./scripts/benchmark.sh -t all -o benchmarks/results.txt
+
+bench-storage:
+	@echo "Running storage benchmarks..."
+	@./scripts/benchmark.sh -t storage
+
+bench-server:
+	@echo "Running server benchmarks..."
+	@./scripts/benchmark.sh -t server
+
+bench-cluster:
+	@echo "Running cluster benchmarks..."
+	@./scripts/benchmark.sh -t cluster
+
+bench-profile:
+	@echo "Running benchmarks with profiling..."
+	@./scripts/benchmark.sh -t all -m -p -o benchmarks/results.txt
+
 fmt:
 	@echo "Formatting code..."
 	$(GO) fmt ./...
@@ -89,6 +109,48 @@ fmt:
 clean:
 	@echo "Cleaning..."
 	rm -rf bin/ coverage.out coverage.html cpu.out mem.out data/ test-data/ benchmark_results.txt
+
+# Docker targets
+docker-build:
+	@echo "Building Docker image..."
+	docker build -t raftkv:latest -f deployments/docker/Dockerfile .
+
+docker-up:
+	@echo "Starting RaftKV cluster with Docker Compose..."
+	docker-compose -f deployments/docker/docker-compose.simple.yml up --build
+
+docker-up-lb:
+	@echo "Starting RaftKV cluster with HAProxy load balancer..."
+	docker-compose -f deployments/docker/docker-compose.yml up --build
+
+docker-down:
+	@echo "Stopping RaftKV cluster..."
+	docker-compose -f deployments/docker/docker-compose.simple.yml down
+
+docker-down-lb:
+	@echo "Stopping RaftKV cluster with load balancer..."
+	docker-compose -f deployments/docker/docker-compose.yml down
+
+docker-clean:
+	@echo "Cleaning Docker resources..."
+	docker-compose -f deployments/docker/docker-compose.simple.yml down -v
+	docker-compose -f deployments/docker/docker-compose.yml down -v
+
+docker-logs:
+	@echo "Tailing cluster logs..."
+	docker-compose -f deployments/docker/docker-compose.simple.yml logs -f
+
+docker-test:
+	@echo "Testing Docker cluster..."
+	@sleep 3
+	@echo "\n1. Writing data to node1..."
+	@docker exec raftkv-node1 kvcli --server=localhost:8080 put test:key1 "Hello from Docker"
+	@echo "\n2. Reading from node2..."
+	@docker exec raftkv-node2 kvcli --server=localhost:8080 get test:key1
+	@echo "\n3. Checking cluster status..."
+	@curl -s http://localhost:8081/cluster/nodes | jq
+	@echo "\n4. Getting cluster leader..."
+	@curl -s http://localhost:8081/cluster/leader | jq
 
 # Raft cluster targets
 raft-cluster: build
@@ -253,6 +315,15 @@ help:
 	@echo "  make bench-compaction - Run compaction benchmarks"
 	@echo "  make bench-grpc      - Run gRPC server benchmarks"
 	@echo "  make bench-http      - Run HTTP server benchmarks"
+	@echo ""
+	@echo "Docker deployment:"
+	@echo "  make docker-build    - Build Docker image"
+	@echo "  make docker-up       - Start 3-node cluster with Docker Compose"
+	@echo "  make docker-up-lb    - Start cluster with HAProxy load balancer"
+	@echo "  make docker-down     - Stop Docker cluster"
+	@echo "  make docker-clean    - Stop and remove all Docker resources"
+	@echo "  make docker-logs     - View cluster logs"
+	@echo "  make docker-test     - Test the Docker cluster"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean           - Clean build artifacts and data"

@@ -9,11 +9,13 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	pb "github.com/RashikAnsar/raftkv/api/proto"
 	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
+	"github.com/RashikAnsar/raftkv/internal/security"
 )
 
 // GRPCServer implements the KVStore gRPC service
@@ -32,6 +34,9 @@ type GRPCServerConfig struct {
 	RaftNode *consensus.RaftNode
 	Logger   *zap.Logger
 	Metrics  *observability.Metrics
+
+	// TLS configuration
+	TLSConfig *security.TLSConfig // Optional TLS config (nil = insecure, non-nil = TLS)
 }
 
 // NewGRPCServer creates a new gRPC server
@@ -43,10 +48,32 @@ func NewGRPCServer(config GRPCServerConfig) *GRPCServer {
 		addr:     config.Addr,
 	}
 
-	// Create gRPC server with interceptors
-	s.server = grpc.NewServer(
+	// Prepare gRPC server options
+	opts := []grpc.ServerOption{
 		grpc.UnaryInterceptor(s.loggingInterceptor),
-	)
+	}
+
+	// Add TLS credentials if configured
+	if config.TLSConfig != nil {
+		if err := security.ValidateTLSConfig(config.TLSConfig); err != nil {
+			config.Logger.Error("Invalid TLS configuration", zap.Error(err))
+		} else {
+			tlsConfig, err := security.LoadServerTLSConfig(config.TLSConfig)
+			if err != nil {
+				config.Logger.Error("Failed to load TLS configuration", zap.Error(err))
+			} else {
+				creds := credentials.NewTLS(tlsConfig)
+				opts = append(opts, grpc.Creds(creds))
+				config.Logger.Info("TLS enabled for gRPC server",
+					zap.Bool("mtls", config.TLSConfig.EnableMTLS),
+					zap.String("cert", config.TLSConfig.CertFile),
+				)
+			}
+		}
+	}
+
+	// Create gRPC server with options
+	s.server = grpc.NewServer(opts...)
 
 	// Register service
 	pb.RegisterKVStoreServer(s.server, s)

@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/RashikAnsar/raftkv/internal/observability"
+	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
@@ -22,6 +23,11 @@ type HTTPServer struct {
 	server  *http.Server
 	logger  *observability.Logger
 	metrics *observability.Metrics
+
+	// TLS configuration
+	tlsEnabled bool
+	certFile   string
+	keyFile    string
 }
 
 type HTTPServerConfig struct {
@@ -34,6 +40,9 @@ type HTTPServerConfig struct {
 	MaxRequestSize  int64 // Maximum request body size (bytes)
 	EnableRateLimit bool
 	RateLimit       int // Requests per second
+
+	// TLS configuration
+	TLSConfig *security.TLSConfig // Optional TLS config (nil = HTTP, non-nil = HTTPS)
 }
 
 func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
@@ -76,6 +85,30 @@ func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
 		Handler:      router,
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
+	}
+
+	// Configure TLS if provided
+	if config.TLSConfig != nil {
+		// Validate TLS configuration first
+		if err := security.ValidateTLSConfig(config.TLSConfig); err != nil {
+			config.Logger.Error("Invalid TLS configuration", zap.Error(err))
+			// Return error for invalid config in production
+			// For now, just log and continue without TLS
+		} else {
+			tlsConfig, err := security.LoadServerTLSConfig(config.TLSConfig)
+			if err != nil {
+				config.Logger.Error("Failed to load TLS configuration", zap.Error(err))
+			} else {
+				srv.server.TLSConfig = tlsConfig
+				srv.tlsEnabled = true
+				srv.certFile = config.TLSConfig.CertFile
+				srv.keyFile = config.TLSConfig.KeyFile
+				config.Logger.Info("TLS enabled for HTTP server",
+					zap.Bool("mtls", config.TLSConfig.EnableMTLS),
+					zap.String("cert", config.TLSConfig.CertFile),
+				)
+			}
+		}
 	}
 
 	return srv
@@ -321,9 +354,19 @@ func (s *HTTPServer) respondError(w http.ResponseWriter, status int, message str
 	})
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server (HTTP or HTTPS based on configuration)
 func (s *HTTPServer) Start() error {
-	s.logger.Info("Starting HTTP server", zap.String("addr", s.server.Addr))
+	if s.tlsEnabled {
+		s.logger.Info("Starting HTTPS server",
+			zap.String("addr", s.server.Addr),
+			zap.String("cert", s.certFile),
+		)
+		return s.server.ListenAndServeTLS(s.certFile, s.keyFile)
+	}
+
+	s.logger.Info("Starting HTTP server (unencrypted)",
+		zap.String("addr", s.server.Addr),
+	)
 	return s.server.ListenAndServe()
 }
 

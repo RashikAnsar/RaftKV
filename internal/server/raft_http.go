@@ -14,6 +14,7 @@ import (
 
 	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
+	"github.com/RashikAnsar/raftkv/internal/security"
 )
 
 // RaftHTTPServer is an HTTP server that integrates with Raft consensus
@@ -23,6 +24,11 @@ type RaftHTTPServer struct {
 	server  *http.Server
 	logger  *observability.Logger
 	metrics *observability.Metrics
+
+	// TLS configuration
+	tlsEnabled bool
+	certFile   string
+	keyFile    string
 }
 
 // RaftHTTPServerConfig contains configuration for the Raft HTTP server
@@ -36,6 +42,9 @@ type RaftHTTPServerConfig struct {
 	MaxRequestSize  int64
 	EnableRateLimit bool
 	RateLimit       int
+
+	// TLS configuration
+	TLSConfig *security.TLSConfig // Optional TLS config (nil = HTTP, non-nil = HTTPS)
 }
 
 // NewRaftHTTPServer creates a new Raft-aware HTTP server
@@ -79,6 +88,27 @@ func NewRaftHTTPServer(config RaftHTTPServerConfig) *RaftHTTPServer {
 		Handler:      router,
 		ReadTimeout:  config.ReadTimeout,
 		WriteTimeout: config.WriteTimeout,
+	}
+
+	// Configure TLS if provided
+	if config.TLSConfig != nil {
+		if err := security.ValidateTLSConfig(config.TLSConfig); err != nil {
+			config.Logger.Error("Invalid TLS configuration", zap.Error(err))
+		} else {
+			tlsConfig, err := security.LoadServerTLSConfig(config.TLSConfig)
+			if err != nil {
+				config.Logger.Error("Failed to load TLS configuration", zap.Error(err))
+			} else {
+				srv.server.TLSConfig = tlsConfig
+				srv.tlsEnabled = true
+				srv.certFile = config.TLSConfig.CertFile
+				srv.keyFile = config.TLSConfig.KeyFile
+				config.Logger.Info("TLS enabled for Raft HTTP server",
+					zap.Bool("mtls", config.TLSConfig.EnableMTLS),
+					zap.String("cert", config.TLSConfig.CertFile),
+				)
+			}
+		}
 	}
 
 	return srv
@@ -494,7 +524,17 @@ func (s *RaftHTTPServer) respondError(w http.ResponseWriter, status int, message
 
 // Start starts the HTTP server
 func (s *RaftHTTPServer) Start() error {
-	s.logger.Info("Starting Raft HTTP server", zap.String("addr", s.server.Addr))
+	if s.tlsEnabled {
+		s.logger.Info("Starting Raft HTTPS server",
+			zap.String("addr", s.server.Addr),
+			zap.String("cert", s.certFile),
+		)
+		return s.server.ListenAndServeTLS(s.certFile, s.keyFile)
+	}
+
+	s.logger.Info("Starting Raft HTTP server (unencrypted)",
+		zap.String("addr", s.server.Addr),
+	)
 	return s.server.ListenAndServe()
 }
 

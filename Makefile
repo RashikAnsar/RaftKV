@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto
+.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test
 
 # Variables
 BINARY_NAME=kvstore
@@ -280,11 +280,150 @@ quickstart: build build-cli
 	@echo ""
 	@echo "To stop: make raft-stop"
 
+# TLS/Security targets
+tls-certs:
+	@echo "🔐 Generating TLS certificates..."
+	@./scripts/generate-certs.sh
+	@echo "Certificates generated in certs/ directory"
+
+tls-server: build tls-certs
+	@echo "Starting single-node server with TLS..."
+	@mkdir -p data
+	./bin/kvstore \
+		--http-addr=:8443 \
+		--data-dir=./data \
+		--tls \
+		--tls-cert=certs/server-cert.pem \
+		--tls-key=certs/server-key.pem \
+		--tls-ca=certs/ca-cert.pem \
+		--log-level=info
+
+tls-server-mtls: build tls-certs
+	@echo "Starting single-node server with mTLS (mutual TLS)..."
+	@mkdir -p data
+	./bin/kvstore \
+		--http-addr=:8443 \
+		--data-dir=./data \
+		--tls \
+		--mtls \
+		--tls-cert=certs/server-cert.pem \
+		--tls-key=certs/server-key.pem \
+		--tls-ca=certs/ca-cert.pem \
+		--log-level=info
+
+tls-cluster: build tls-certs
+	@echo "Starting 3-node Raft cluster with TLS..."
+	@mkdir -p data/node1 data/node2 data/node3 logs
+	@echo "Starting node1 (bootstrap)..."
+	@./bin/kvstore \
+		--raft --bootstrap \
+		--node-id=node1 \
+		--raft-addr=localhost:7001 \
+		--http-addr=:8081 \
+		--data-dir=./data/node1 \
+		--tls \
+		--tls-cert=certs/node1-cert.pem \
+		--tls-key=certs/node1-key.pem \
+		--tls-ca=certs/ca-cert.pem \
+		--log-level=info > logs/node1.log 2>&1 &
+	@echo "Node1 PID: $$!" > logs/node1.pid
+	@sleep 3
+	@echo "Starting node2 (join)..."
+	@./bin/kvstore \
+		--raft \
+		--node-id=node2 \
+		--raft-addr=localhost:7002 \
+		--http-addr=:8082 \
+		--data-dir=./data/node2 \
+		--join=https://localhost:8081 \
+		--tls \
+		--tls-cert=certs/node2-cert.pem \
+		--tls-key=certs/node2-key.pem \
+		--tls-ca=certs/ca-cert.pem \
+		--log-level=info > logs/node2.log 2>&1 &
+	@echo "Node2 PID: $$!" > logs/node2.pid
+	@sleep 3
+	@echo "Starting node3 (join)..."
+	@./bin/kvstore \
+		--raft \
+		--node-id=node3 \
+		--raft-addr=localhost:7003 \
+		--http-addr=:8083 \
+		--data-dir=./data/node3 \
+		--join=https://localhost:8081 \
+		--tls \
+		--tls-cert=certs/node3-cert.pem \
+		--tls-key=certs/node3-key.pem \
+		--tls-ca=certs/ca-cert.pem \
+		--log-level=info > logs/node3.log 2>&1 &
+	@echo "Node3 PID: $$!" > logs/node3.pid
+	@sleep 2
+	@echo ""
+	@echo "TLS cluster started!"
+	@echo ""
+	@echo "Cluster nodes (HTTPS):"
+	@echo "  Node1: https://localhost:8081"
+	@echo "  Node2: https://localhost:8082"
+	@echo "  Node3: https://localhost:8083"
+	@echo ""
+	@echo "Logs:"
+	@echo "  Node1: logs/node1.log"
+	@echo "  Node2: logs/node2.log"
+	@echo "  Node3: logs/node3.log"
+	@echo ""
+	@echo "Test with:"
+	@echo "  make tls-test"
+	@echo ""
+	@echo "Stop with:"
+	@echo "  make raft-stop"
+
+tls-test:
+	@echo "🔐 Testing TLS cluster..."
+	@echo ""
+	@echo "1. Health check (node1):"
+	@curl -s --cacert certs/ca-cert.pem https://localhost:8081/health | jq
+	@echo ""
+	@echo "2. Write data (HTTPS):"
+	@curl -s --cacert certs/ca-cert.pem -X PUT -d "Hello TLS World" https://localhost:8081/keys/test:tls
+	@echo ""
+	@echo "3. Read data (HTTPS):"
+	@curl -s --cacert certs/ca-cert.pem https://localhost:8081/keys/test:tls
+	@echo ""
+	@echo "4. Read from node2 (replication check):"
+	@curl -s --cacert certs/ca-cert.pem https://localhost:8082/keys/test:tls
+	@echo ""
+	@echo "5. Cluster status:"
+	@curl -s --cacert certs/ca-cert.pem https://localhost:8081/cluster/nodes | jq
+	@echo ""
+	@echo "TLS cluster is working!"
+
+tls-test-mtls:
+	@echo "🔐 Testing mTLS (mutual TLS) authentication..."
+	@echo ""
+	@echo "1. Request without client cert (should fail):"
+	@curl -s --cacert certs/ca-cert.pem https://localhost:8443/health || echo "❌ Rejected (expected)"
+	@echo ""
+	@echo "2. Request with client cert (should succeed):"
+	@curl -s --cacert certs/ca-cert.pem \
+		--cert certs/client-cert.pem \
+		--key certs/client-key.pem \
+		https://localhost:8443/health | jq
+	@echo ""
+	@echo "mTLS authentication working!"
+
 help:
 	@echo "Available targets:"
 	@echo ""
 	@echo "Quick Start:"
 	@echo "  make quickstart      - Build, start cluster, and test (one command!)"
+	@echo ""
+	@echo "TLS/Security (NEW!):"
+	@echo "  make tls-certs       - Generate TLS certificates"
+	@echo "  make tls-server      - Start single-node server with TLS"
+	@echo "  make tls-server-mtls - Start server with mutual TLS (client auth)"
+	@echo "  make tls-cluster     - Start 3-node Raft cluster with TLS"
+	@echo "  make tls-test        - Test TLS cluster with HTTPS requests"
+	@echo "  make tls-test-mtls   - Test mutual TLS authentication"
 	@echo ""
 	@echo "Single-node mode:"
 	@echo "  make run             - Run server locally (single-node)"

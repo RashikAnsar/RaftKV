@@ -13,6 +13,7 @@ import (
 
 	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
+	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/server"
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
@@ -50,6 +51,13 @@ type Config struct {
 	EnableCache   bool
 	CacheSize     int
 	CacheTTL      time.Duration
+
+	// TLS config
+	EnableTLS    bool
+	TLSCert      string
+	TLSKey       string
+	TLSCA        string
+	EnableMTLS   bool
 }
 
 func main() {
@@ -114,6 +122,22 @@ func main() {
 		)
 	}
 
+	// Prepare TLS configuration if enabled (before Raft node creation)
+	var tlsConfig *security.TLSConfig
+	if config.EnableTLS {
+		tlsConfig = &security.TLSConfig{
+			CertFile:     config.TLSCert,
+			KeyFile:      config.TLSKey,
+			ClientCAFile: config.TLSCA,
+			EnableMTLS:   config.EnableMTLS,
+			MinVersion:   0x0303, // TLS 1.2
+		}
+		logger.Info("TLS configuration loaded",
+			zap.String("cert", config.TLSCert),
+			zap.Bool("mtls", config.EnableMTLS),
+		)
+	}
+
 	// Create Raft node if enabled
 	var raftNode *consensus.RaftNode
 	if config.EnableRaft {
@@ -124,6 +148,7 @@ func main() {
 			Bootstrap: config.Bootstrap,
 			JoinAddr:  config.JoinAddr,
 			Store:     durableStore, // Pass concrete DurableStore type
+			TLSConfig: tlsConfig,    // Pass TLS config for inter-node encryption
 			Logger:    logger.Logger,
 		})
 		if err != nil {
@@ -165,6 +190,7 @@ func main() {
 			MaxRequestSize:  config.MaxRequestSize,
 			EnableRateLimit: config.EnableRateLimit,
 			RateLimit:       config.RateLimit,
+			TLSConfig:       tlsConfig,
 		})
 
 		// Start HTTP server in goroutine
@@ -180,10 +206,11 @@ func main() {
 		var grpcServer *server.GRPCServer
 		if config.EnableGRPC {
 			grpcServer = server.NewGRPCServer(server.GRPCServerConfig{
-				Addr:     config.GRPCAddr,
-				RaftNode: raftNode,
-				Logger:   logger.Logger,
-				Metrics:  metrics,
+				Addr:      config.GRPCAddr,
+				RaftNode:  raftNode,
+				Logger:    logger.Logger,
+				Metrics:   metrics,
+				TLSConfig: tlsConfig,
 			})
 
 			go func() {
@@ -213,6 +240,7 @@ func main() {
 			MaxRequestSize:  config.MaxRequestSize,
 			EnableRateLimit: config.EnableRateLimit,
 			RateLimit:       config.RateLimit,
+			TLSConfig:       tlsConfig,
 		})
 
 		// Start server in goroutine
@@ -265,6 +293,13 @@ func parseFlags() Config {
 	flag.BoolVar(&config.EnableCache, "enable-cache", true, "Enable read cache")
 	flag.IntVar(&config.CacheSize, "cache-size", 10000, "Max number of entries in cache")
 	cacheTTLSec := flag.Int("cache-ttl", 0, "Cache TTL in seconds (0 = no expiration)")
+
+	// TLS flags
+	flag.BoolVar(&config.EnableTLS, "tls", false, "Enable TLS/HTTPS")
+	flag.StringVar(&config.TLSCert, "tls-cert", "certs/server-cert.pem", "TLS certificate file")
+	flag.StringVar(&config.TLSKey, "tls-key", "certs/server-key.pem", "TLS key file")
+	flag.StringVar(&config.TLSCA, "tls-ca", "certs/ca-cert.pem", "TLS CA certificate (for mTLS)")
+	flag.BoolVar(&config.EnableMTLS, "mtls", false, "Enable mutual TLS (client authentication)")
 
 	flag.Parse()
 

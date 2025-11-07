@@ -306,6 +306,16 @@ func (s *RaftLogStore) recover() error {
 		dataLen := binary.BigEndian.Uint32(headerBuf[17:21])
 		extLen := binary.BigEndian.Uint32(headerBuf[21:25])
 
+		// Calculate full entry size
+		entrySize := entryHeaderSize + int64(dataLen) + int64(extLen)
+
+		// Validate that the full entry exists in the file
+		if offset+entrySize > fileSize {
+			// Incomplete entry at end of file - truncate here
+			fmt.Printf("Warning: Incomplete Raft log entry at offset %d, truncating\n", offset)
+			break
+		}
+
 		// Store offset in index
 		s.index[index] = offset
 
@@ -318,7 +328,6 @@ func (s *RaftLogStore) recover() error {
 		}
 
 		// Move to next entry
-		entrySize := entryHeaderSize + int64(dataLen) + int64(extLen)
 		offset += entrySize
 	}
 

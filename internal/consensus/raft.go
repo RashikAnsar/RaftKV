@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/raft"
 	"go.uber.org/zap"
 
+	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
@@ -43,6 +44,9 @@ type RaftConfig struct {
 	// Store - changed to concrete type for unified architecture
 	Store *storage.DurableStore
 
+	// Security configuration
+	TLSConfig *security.TLSConfig // Optional TLS configuration for inter-node communication
+
 	// Logger
 	Logger *zap.Logger
 }
@@ -68,15 +72,50 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 	raftConfig.LeaderLeaseTimeout = 500 * time.Millisecond
 	raftConfig.CommitTimeout = 50 * time.Millisecond
 
-	// Setup Raft transport (TCP)
+	// Setup Raft transport (TCP or TLS)
 	addr, err := net.ResolveTCPAddr("tcp", config.RaftAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve raft address: %w", err)
 	}
 
-	transport, err := raft.NewTCPTransport(config.RaftAddr, addr, 3, 10*time.Second, os.Stderr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transport: %w", err)
+	var transport *raft.NetworkTransport
+	if config.TLSConfig != nil {
+		// Create TLS transport for secure inter-node communication
+		config.Logger.Info("Setting up TLS transport for Raft",
+			zap.String("addr", config.RaftAddr),
+			zap.String("cert", config.TLSConfig.CertFile),
+		)
+
+		// Load TLS config for Raft (handles both server and client roles)
+		tlsConfig, err := security.LoadRaftTLSConfig(config.TLSConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load TLS config for Raft: %w", err)
+		}
+
+		// Create TLS stream layer
+		streamLayer, err := security.NewTLSStreamLayer(config.RaftAddr, addr, tlsConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create TLS stream layer: %w", err)
+		}
+
+		// Create transport with TLS stream layer
+		transportConfig := &raft.NetworkTransportConfig{
+			Stream:          streamLayer,
+			MaxPool:         3,
+			Timeout:         10 * time.Second,
+			Logger:          newHCLogger(config.Logger),
+		}
+
+		transport = raft.NewNetworkTransportWithConfig(transportConfig)
+
+		config.Logger.Info("TLS transport initialized for Raft (mutual TLS enabled)")
+	} else {
+		// Create standard TCP transport (unencrypted)
+		config.Logger.Info("Setting up TCP transport for Raft (unencrypted)", zap.String("addr", config.RaftAddr))
+		transport, err = raft.NewTCPTransport(config.RaftAddr, addr, 3, 10*time.Second, os.Stderr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create transport: %w", err)
+		}
 	}
 
 	// Create custom Raft log store (WAL-based)
@@ -150,11 +189,25 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 			return nil, fmt.Errorf("failed to marshal join request: %w", err)
 		}
 
-		resp, err := http.Post(
-			config.JoinAddr+"/cluster/join",
-			"application/json",
-			bytes.NewReader(reqBody),
-		)
+		// Create HTTP client with TLS support if configured
+		httpClient := &http.Client{}
+		if config.TLSConfig != nil {
+			tlsConfig, err := security.LoadClientTLSConfig(config.TLSConfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load TLS config for join request: %w", err)
+			}
+			httpClient.Transport = &http.Transport{
+				TLSClientConfig: tlsConfig,
+			}
+		}
+
+		req, err := http.NewRequest("POST", config.JoinAddr+"/cluster/join", bytes.NewReader(reqBody))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create join request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to send join request: %w", err)
 		}

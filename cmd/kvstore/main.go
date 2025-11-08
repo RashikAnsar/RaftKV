@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/RashikAnsar/raftkv/internal/auth"
 	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
@@ -58,6 +59,12 @@ type Config struct {
 	TLSKey       string
 	TLSCA        string
 	EnableMTLS   bool
+
+	// Authentication config
+	EnableAuth      bool
+	AuthJWTSecret   string
+	AuthTokenExpiry time.Duration
+	AuthAdminKey    string // Initial admin API key for bootstrap
 }
 
 func main() {
@@ -177,6 +184,55 @@ func main() {
 	// Create metrics
 	metrics := observability.NewMetrics()
 
+	// Initialize authentication managers if enabled
+	var userManager *auth.UserManager
+	var apiKeyManager *auth.APIKeyManager
+	var jwtManager *auth.JWTManager
+
+	if config.EnableAuth {
+		// Validate JWT secret
+		if config.AuthJWTSecret == "" {
+			logger.Fatal("JWT secret is required when authentication is enabled (use --auth-jwt-secret)")
+		}
+
+		// Create auth managers
+		userManager = auth.NewUserManager(store)
+		apiKeyManager = auth.NewAPIKeyManager(store)
+		jwtManager = auth.NewJWTManager(config.AuthJWTSecret, config.AuthTokenExpiry)
+
+		logger.Info("Authentication enabled",
+			zap.Duration("token_expiry", config.AuthTokenExpiry),
+		)
+
+		// Create default admin user if it doesn't exist
+		users, err := userManager.ListUsers()
+		if err != nil {
+			logger.Fatal("Failed to list users", zap.Error(err))
+		}
+
+		if len(users) == 0 {
+			// No users exist - create default admin
+			adminUser, err := userManager.CreateUser("admin", "admin", auth.RoleAdmin)
+			if err != nil {
+				logger.Fatal("Failed to create default admin user", zap.Error(err))
+			}
+			logger.Info("Created default admin user",
+				zap.String("username", "admin"),
+				zap.String("password", "admin"),
+				zap.String("warning", "Please change the default password!"),
+			)
+
+			// Generate admin API key if requested
+			if config.AuthAdminKey != "" {
+				// For simplicity, we'll just log that a custom admin key was requested
+				// In production, you'd want to properly handle this
+				logger.Info("Admin API key bootstrap requested",
+					zap.String("user_id", adminUser.ID),
+				)
+			}
+		}
+	}
+
 	// Create servers
 	if config.EnableRaft {
 		// Use Raft-aware HTTP server
@@ -241,6 +297,10 @@ func main() {
 			EnableRateLimit: config.EnableRateLimit,
 			RateLimit:       config.RateLimit,
 			TLSConfig:       tlsConfig,
+			AuthEnabled:     config.EnableAuth,
+			UserManager:     userManager,
+			APIKeyManager:   apiKeyManager,
+			JWTManager:      jwtManager,
 		})
 
 		// Start server in goroutine
@@ -301,11 +361,18 @@ func parseFlags() Config {
 	flag.StringVar(&config.TLSCA, "tls-ca", "certs/ca-cert.pem", "TLS CA certificate (for mTLS)")
 	flag.BoolVar(&config.EnableMTLS, "mtls", false, "Enable mutual TLS (client authentication)")
 
+	// Authentication flags
+	flag.BoolVar(&config.EnableAuth, "auth", false, "Enable authentication and authorization")
+	flag.StringVar(&config.AuthJWTSecret, "auth-jwt-secret", "", "JWT signing secret (required if auth enabled)")
+	authTokenExpirySec := flag.Int("auth-token-expiry", 3600, "JWT token expiry in seconds (default: 1 hour)")
+	flag.StringVar(&config.AuthAdminKey, "auth-admin-key", "", "Initial admin API key for bootstrap (optional)")
+
 	flag.Parse()
 
 	config.ReadTimeout = time.Duration(*readTimeoutSec) * time.Second
 	config.WriteTimeout = time.Duration(*writeTimeoutSec) * time.Second
 	config.CacheTTL = time.Duration(*cacheTTLSec) * time.Second
+	config.AuthTokenExpiry = time.Duration(*authTokenExpirySec) * time.Second
 
 	return config
 }

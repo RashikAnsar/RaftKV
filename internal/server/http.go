@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
+	"github.com/RashikAnsar/raftkv/internal/auth"
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
@@ -43,6 +44,12 @@ type HTTPServerConfig struct {
 
 	// TLS configuration
 	TLSConfig *security.TLSConfig // Optional TLS config (nil = HTTP, non-nil = HTTPS)
+
+	// Authentication configuration
+	AuthEnabled   bool
+	UserManager   *auth.UserManager
+	APIKeyManager *auth.APIKeyManager
+	JWTManager    *auth.JWTManager
 }
 
 func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
@@ -76,8 +83,8 @@ func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
 		router.Use(RateLimitMiddleware(config.RateLimit))
 	}
 
-	// Register routes
-	srv.registerRoutes(router, config.MaxRequestSize)
+	// Register routes (with optional authentication)
+	srv.registerRoutes(router, config.MaxRequestSize, config)
 
 	srv.router = router
 	srv.server = &http.Server{
@@ -120,24 +127,55 @@ func (s *HTTPServer) Handler() http.Handler {
 }
 
 // registerRoutes registers all HTTP routes
-func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64) {
-	// Key operations
-	router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handleGet, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
-	router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handlePut, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
-	router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handleDelete, maxRequestSize)).Methods(http.MethodDelete, http.MethodOptions)
-	router.HandleFunc("/keys", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
-
-	// Admin operations
-	router.HandleFunc("/admin/snapshot", s.limitRequestSize(s.handleSnapshot, maxRequestSize)).Methods(http.MethodPost, http.MethodOptions)
-
-	// Health and metrics
+func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64, config HTTPServerConfig) {
+	// Health and metrics (always public)
 	router.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/ready", s.handleReady).Methods(http.MethodGet, http.MethodOptions)
-	router.HandleFunc("/stats", s.handleStats).Methods(http.MethodGet, http.MethodOptions)
 	router.Handle("/metrics", promhttp.Handler()).Methods(http.MethodGet, http.MethodOptions)
-
-	// Root
 	router.HandleFunc("/", s.handleRoot).Methods(http.MethodGet, http.MethodOptions)
+
+	// Setup authentication middleware if enabled
+	var authMiddleware *auth.Middleware
+	if config.AuthEnabled && config.UserManager != nil && config.APIKeyManager != nil && config.JWTManager != nil {
+		authMiddleware = auth.NewMiddleware(config.APIKeyManager, config.JWTManager, true)
+
+		// Register authentication routes
+		authHandlers := NewAuthHandlers(config.UserManager, config.APIKeyManager, config.JWTManager)
+		authHandlers.RegisterRoutes(router, authMiddleware)
+
+		// Protected key operations (require authentication)
+		keyRouter := router.PathPrefix("/keys").Subrouter()
+		keyRouter.Use(authMiddleware.Authenticate)
+
+		// Read operations (any authenticated user)
+		keyRouter.HandleFunc("/{key}", s.limitRequestSize(s.handleGet, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
+		keyRouter.HandleFunc("", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
+
+		// Write operations (require write role)
+		writeRouter := keyRouter.PathPrefix("").Subrouter()
+		writeRouter.Use(authMiddleware.RequireWrite())
+		writeRouter.HandleFunc("/{key}", s.limitRequestSize(s.handlePut, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
+		writeRouter.HandleFunc("/{key}", s.limitRequestSize(s.handleDelete, maxRequestSize)).Methods(http.MethodDelete, http.MethodOptions)
+
+		// Admin operations (require admin role)
+		adminRouter := router.PathPrefix("/admin").Subrouter()
+		adminRouter.Use(authMiddleware.Authenticate)
+		adminRouter.Use(authMiddleware.RequireAdmin())
+		adminRouter.HandleFunc("/snapshot", s.limitRequestSize(s.handleSnapshot, maxRequestSize)).Methods(http.MethodPost, http.MethodOptions)
+
+		// Stats endpoint (authenticated)
+		statsRouter := router.PathPrefix("/stats").Subrouter()
+		statsRouter.Use(authMiddleware.Authenticate)
+		statsRouter.HandleFunc("", s.handleStats).Methods(http.MethodGet, http.MethodOptions)
+	} else {
+		// No authentication - open access
+		router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handleGet, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
+		router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handlePut, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
+		router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handleDelete, maxRequestSize)).Methods(http.MethodDelete, http.MethodOptions)
+		router.HandleFunc("/keys", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
+		router.HandleFunc("/admin/snapshot", s.limitRequestSize(s.handleSnapshot, maxRequestSize)).Methods(http.MethodPost, http.MethodOptions)
+		router.HandleFunc("/stats", s.handleStats).Methods(http.MethodGet, http.MethodOptions)
+	}
 }
 
 // limitRequestSize middleware limits request body size

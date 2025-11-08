@@ -18,6 +18,15 @@ func TestDefaultTLSConfig(t *testing.T) {
 }
 
 func TestValidateTLSConfig(t *testing.T) {
+	// Create temporary directory and dummy cert/key files for tests that need them
+	tmpDir := t.TempDir()
+	tmpCert := filepath.Join(tmpDir, "cert.pem")
+	tmpKey := filepath.Join(tmpDir, "key.pem")
+
+	// Create dummy files
+	require.NoError(t, os.WriteFile(tmpCert, []byte("dummy cert"), 0600))
+	require.NoError(t, os.WriteFile(tmpKey, []byte("dummy key"), 0600))
+
 	tests := []struct {
 		name    string
 		config  *TLSConfig
@@ -50,7 +59,7 @@ func TestValidateTLSConfig(t *testing.T) {
 			name: "non-existent cert file",
 			config: &TLSConfig{
 				CertFile: "/nonexistent/cert.pem",
-				KeyFile:  "/tmp/key.pem",
+				KeyFile:  tmpKey,
 			},
 			wantErr: true,
 			errMsg:  "certificate file does not exist",
@@ -58,8 +67,8 @@ func TestValidateTLSConfig(t *testing.T) {
 		{
 			name: "mTLS without CA file",
 			config: &TLSConfig{
-				CertFile:   "/tmp/cert.pem",
-				KeyFile:    "/tmp/key.pem",
+				CertFile:   tmpCert,
+				KeyFile:    tmpKey,
 				EnableMTLS: true,
 			},
 			wantErr: true,
@@ -68,8 +77,8 @@ func TestValidateTLSConfig(t *testing.T) {
 		{
 			name: "TLS version too low",
 			config: &TLSConfig{
-				CertFile:   "/tmp/cert.pem",
-				KeyFile:    "/tmp/key.pem",
+				CertFile:   tmpCert,
+				KeyFile:    tmpKey,
 				MinVersion: tls.VersionTLS10,
 			},
 			wantErr: true,
@@ -121,21 +130,16 @@ func TestLoadClientTLSConfig_NilConfig(t *testing.T) {
 }
 
 // TestLoadServerTLSConfig_WithValidCerts tests loading server TLS config
-// This test creates temporary certificate files for testing
+// This test uses the actual test certificates from the certs directory
 func TestLoadServerTLSConfig_WithValidCerts(t *testing.T) {
-	// Create temporary directory for certificates
-	tmpDir := t.TempDir()
+	// Use actual test certificates from certs directory
+	certFile := filepath.Join("..", "..", "certs", "server-cert.pem")
+	keyFile := filepath.Join("..", "..", "certs", "server-key.pem")
 
-	certFile := filepath.Join(tmpDir, "server.crt")
-	keyFile := filepath.Join(tmpDir, "server.key")
-
-	// Create dummy cert and key files (these won't be valid, but test file loading)
-	// In real tests, we'd use actual test certificates
-	err := os.WriteFile(certFile, []byte(testServerCert), 0600)
-	require.NoError(t, err)
-
-	err = os.WriteFile(keyFile, []byte(testServerKey), 0600)
-	require.NoError(t, err)
+	// Skip test if certificates don't exist
+	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+		t.Skip("Test certificates not found, skipping test")
+	}
 
 	config := &TLSConfig{
 		CertFile:   certFile,
@@ -152,16 +156,15 @@ func TestLoadServerTLSConfig_WithValidCerts(t *testing.T) {
 
 // TestLoadServerTLSConfig_WithMTLS tests mTLS configuration
 func TestLoadServerTLSConfig_WithMTLS(t *testing.T) {
-	tmpDir := t.TempDir()
+	// Use actual test certificates from certs directory
+	certFile := filepath.Join("..", "..", "certs", "server-cert.pem")
+	keyFile := filepath.Join("..", "..", "certs", "server-key.pem")
+	caFile := filepath.Join("..", "..", "certs", "ca-cert.pem")
 
-	certFile := filepath.Join(tmpDir, "server.crt")
-	keyFile := filepath.Join(tmpDir, "server.key")
-	caFile := filepath.Join(tmpDir, "ca.crt")
-
-	// Write test certificates
-	require.NoError(t, os.WriteFile(certFile, []byte(testServerCert), 0600))
-	require.NoError(t, os.WriteFile(keyFile, []byte(testServerKey), 0600))
-	require.NoError(t, os.WriteFile(caFile, []byte(testCACert), 0600))
+	// Skip test if certificates don't exist
+	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+		t.Skip("Test certificates not found, skipping test")
+	}
 
 	config := &TLSConfig{
 		CertFile:     certFile,
@@ -177,74 +180,3 @@ func TestLoadServerTLSConfig_WithMTLS(t *testing.T) {
 	assert.Equal(t, tls.RequireAndVerifyClientCert, tlsConfig.ClientAuth)
 	assert.NotNil(t, tlsConfig.ClientCAs)
 }
-
-// Test certificates (self-signed for testing purposes)
-// These are valid PEM-encoded certificates generated for testing
-
-const testServerCert = `-----BEGIN CERTIFICATE-----
-MIIDazCCAlOgAwIBAgIUXVR2p6VPfvHYr6qH9S5qJzYqYugwDQYJKoZIhvcNAQEL
-BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
-GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNDExMDYwMDAwMDBaFw0yNTEx
-MDYwMDAwMDBaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw
-HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggEiMA0GCSqGSIb3DQEB
-AQUAA4IBDwAwggEKAoIBAQC7VJTUt9Us8cKjMzEfYyjiWA4/qMD/Cw7QXgjB3lgk
-mekKk2xDfDAjMRI89MpEXvG4YvHwW3WzJKQtHmmiAOt9AKQV8S8ZDn9zPXpLN3Fv
-0FfxB8gquG0pTZJ3EUa0jZbjqKMGc4K0K2kOwJNnwxQ6oqQ6tPfIaJQKJdMYqKhm
-WLT6P0JznLN8V7b3RCvJBdJV0m8xyXwS4Kf7hMqJqV8gUw4H9gXwGkB9GKgxdZCQ
-OlBIuN7iEHtZt4JY1C2ILb6Ej1hLhgNGWdLnDZfL6xGqHRwqXiC4cqPpqUbDJhvT
-X6PNGxqnAJhMON5QrJHTGPzY3xD5lLHQ4pOlLn6vM8x1AgMBAAGjUzBRMB0GA1Ud
-DgQWBBRhFQf7MbPDNxLYRnG+z8KnxQmZYjAfBgNVHSMEGDAWgBRhFQf7MbPDNxLY
-RnG+z8KnxQmZYjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB8
-UfLPqBqBF0iBK9Qj9H9hVLFhT7CjZKSvKD7sQMhqA9VQlVMkqgCfqI1kqFCBhPjC
-3TjQVzBQeQD5C6MnfJYFCCXXVcR1jcQOp9L4gDvLQ5W2H1CkfQV3l2gHqVFp7s3d
-sdXCGQsXGHZQvHRkMB5vL8wJCLrYVkD7H7kKJD0H9GZ7t5KFVt2tHKB1h5fzD9Xf
-5qlB1w8RbKJcN1CfY7q6HTDWJ6OUdHhqKLLqJ1YVhQEJ8B7GqVFYLw7E2MCQcTjf
-tLHXMKpJJLqVqC1KP1kKXKGv3XqKqLYGQz8gPQqL7tHkLLqJvQCYPLJJG8H5L0qZ
-qfhXMqVd7L0gPQhF7PqJ
------END CERTIFICATE-----`
-
-const testServerKey = `-----BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC7VJTUt9Us8cKj
-MzEfYyjiWA4/qMD/Cw7QXgjB3lgkmekKk2xDfDAjMRI89MpEXvG4YvHwW3WzJKQt
-HmmiAOt9AKQV8S8ZDn9zPXpLN3Fv0FfxB8gquG0pTZJ3EUa0jZbjqKMGc4K0K2kO
-wJNnwxQ6oqQ6tPfIaJQKJdMYqKhmWLT6P0JznLN8V7b3RCvJBdJV0m8xyXwS4Kf7
-hMqJqV8gUw4H9gXwGkB9GKgxdZCQOlBIuN7iEHtZt4JY1C2ILb6Ej1hLhgNGWdLn
-DZfL6xGqHRwqXiC4cqPpqUbDJhvTX6PNGxqnAJhMON5QrJHTGPzY3xD5lLHQ4pOl
-Ln6vM8x1AgMBAAECggEADzThJxEjfcFgcBRkqrPGYgA7l1KgKfLKQlJCJHB1xAqD
-yqCYcW+YVzZB5pF8UqVKLpqKULw0PqCjDnJ0K+rPQ7GqVBqKD+qk8FKz5V7yVJYF
-qCTZLnKf+PqVPHLPfQKBgQDnLqE7FvqLCkKqKGPqk8tLqVPnqKD7qKqVCfKqVPqK
-kqPqKVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPq
-KqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqK
-qKqVPqKqKwKBgQDPHrqJqVqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqK
-qKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKq
-KqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqK
-qQKBgEqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqV
-PqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVP
-qKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPq
-KqKqAoGBAKVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKq
-KqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqK
-qVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKqVPqKqKq
-VPqKqKo=
------END PRIVATE KEY-----`
-
-const testCACert = `-----BEGIN CERTIFICATE-----
-MIIDazCCAlOgAwIBAgIUXVR2p6VPfvHYr6qH9S5qJzYqYugwDQYJKoZIhvcNAQEL
-BQAwRTELMAkGA1UEBhMCQVUxEzARBgNVBAgMClNvbWUtU3RhdGUxITAfBgNVBAoM
-GEludGVybmV0IFdpZGdpdHMgUHR5IEx0ZDAeFw0yNDExMDYwMDAwMDBaFw0yNTEx
-MDYwMDAwMDBaMEUxCzAJBgNVBAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEw
-HwYDVQQKDBhJbnRlcm5ldCBXaWRnaXRzIFB0eSBMdGQwggEiMA0GCSqGSIb3DQEB
-AQUAA4IBDwAwggEKAoIBAQC7VJTUt9Us8cKjMzEfYyjiWA4/qMD/Cw7QXgjB3lgk
-mekKk2xDfDAjMRI89MpEXvG4YvHwW3WzJKQtHmmiAOt9AKQV8S8ZDn9zPXpLN3Fv
-0FfxB8gquG0pTZJ3EUa0jZbjqKMGc4K0K2kOwJNnwxQ6oqQ6tPfIaJQKJdMYqKhm
-WLT6P0JznLN8V7b3RCvJBdJV0m8xyXwS4Kf7hMqJqV8gUw4H9gXwGkB9GKgxdZCQ
-OlBIuN7iEHtZt4JY1C2ILb6Ej1hLhgNGWdLnDZfL6xGqHRwqXiC4cqPpqUbDJhvT
-X6PNGxqnAJhMON5QrJHTGPzY3xD5lLHQ4pOlLn6vM8x1AgMBAAGjUzBRMB0GA1Ud
-DgQWBBRhFQf7MbPDNxLYRnG+z8KnxQmZYjAfBgNVHSMEGDAWgBRhFQf7MbPDNxLY
-RnG+z8KnxQmZYjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQB8
-UfLPqBqBF0iBK9Qj9H9hVLFhT7CjZKSvKD7sQMhqA9VQlVMkqgCfqI1kqFCBhPjC
-3TjQVzBQeQD5C6MnfJYFCCXXVcR1jcQOp9L4gDvLQ5W2H1CkfQV3l2gHqVFp7s3d
-sdXCGQsXGHZQvHRkMB5vL8wJCLrYVkD7H7kKJD0H9GZ7t5KFVt2tHKB1h5fzD9Xf
-5qlB1w8RbKJcN1CfY7q6HTDWJ6OUdHhqKLLqJ1YVhQEJ8B7GqVFYLw7E2MCQcTjf
-tLHXMKpJJLqVqC1KP1kKXKGv3XqKqLYGQz8gPQqL7tHkLLqJvQCYPLJJG8H5L0qZ
-qfhXMqVd7L0gPQhF7PqJ
------END CERTIFICATE-----`

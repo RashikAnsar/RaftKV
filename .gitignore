@@ -29,5 +29,16 @@ Thumbs.db
 
 # Go
 vendor/
-go.workcerts/
+go.work
+
+# TLS certificates (keep example structure, ignore actual certs)
+certs/
 *.pem
+*.key
+*.crt
+
+# User configuration files (keep examples, ignore user configs)
+config/config.yaml
+config/config.local.yaml
+config/*.local.yaml
+*.local.yaml

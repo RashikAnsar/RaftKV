@@ -1,0 +1,57 @@
+# Development Configuration
+# Quick setup for local development
+
+server:
+  http_addr: ":8080"
+  grpc_addr: ":9090"
+  enable_grpc: true
+
+storage:
+  data_dir: "./data/dev"
+  sync_on_write: false  # Faster for development
+  snapshot_every: 5000  # More frequent snapshots for testing
+
+wal:
+  batch_enabled: true
+  batch_size: 50
+  batch_bytes: 524288  # 512KB
+  batch_wait_time: 20ms
+  compaction_enabled: true
+  compaction_margin: 50
+
+cache:
+  enabled: true
+  max_size: 5000
+  ttl: 5m  # Shorter TTL for testing
+
+raft:
+  enabled: false  # Single-node for development
+  node_id: "dev-node"
+  raft_addr: "localhost:7000"
+  raft_dir: "./data/dev/raft"
+  bootstrap: false
+  join_addr: ""
+
+auth:
+  enabled: false  # Disabled for easier development
+  jwt_secret: "dev-secret-change-me"
+  token_expiry: 24h  # Longer for development
+  admin_key: ""
+
+tls:
+  enabled: false  # Disabled for easier development
+  cert_file: "certs/server-cert.pem"
+  key_file: "certs/server-key.pem"
+  ca_file: "certs/ca-cert.pem"
+  enable_mtls: false
+
+observability:
+  log_level: "debug"  # Verbose logging
+  metrics_enabled: true
+
+performance:
+  read_timeout: 30s  # Generous timeouts for debugging
+  write_timeout: 30s
+  max_request_size: 10485760  # 10MB for testing
+  enable_rate_limit: false
+  rate_limit: 10000

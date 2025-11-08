@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	flag "github.com/spf13/pflag"
 	"go.uber.org/zap"
 
 	"github.com/RashikAnsar/raftkv/internal/auth"
+	"github.com/RashikAnsar/raftkv/internal/config"
 	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
@@ -19,60 +20,29 @@ import (
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
-type Config struct {
-	// Server config
-	HTTPAddr   string
-	GRPCAddr   string
-	EnableGRPC bool
-
-	// Storage config
-	DataDir       string
-	SyncOnWrite   bool
-	SnapshotEvery int
-
-	// Raft config
-	EnableRaft bool
-	NodeID     string
-	RaftAddr   string
-	RaftDir    string
-	Bootstrap  bool
-	JoinAddr   string
-
-	// Observability
-	LogLevel string
-
-	// Performance
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	MaxRequestSize  int64
-	EnableRateLimit bool
-	RateLimit       int
-
-	// Cache config
-	EnableCache   bool
-	CacheSize     int
-	CacheTTL      time.Duration
-
-	// TLS config
-	EnableTLS    bool
-	TLSCert      string
-	TLSKey       string
-	TLSCA        string
-	EnableMTLS   bool
-
-	// Authentication config
-	EnableAuth      bool
-	AuthJWTSecret   string
-	AuthTokenExpiry time.Duration
-	AuthAdminKey    string // Initial admin API key for bootstrap
-}
-
 func main() {
-	// Parse command-line flags
-	config := parseFlags()
+	// Setup flags
+	fs := flag.NewFlagSet("kvstore", flag.ExitOnError)
+	configFile := fs.String("config", "", "Path to configuration file (YAML or JSON)")
+
+	// Register all configuration flags
+	config.RegisterFlags(fs)
+
+	// Parse flags
+	fs.Parse(os.Args[1:])
+
+	// Load configuration from multiple sources (flags, env, config file, defaults)
+	cfg, err := config.Load(config.LoadOptions{
+		ConfigFile: *configFile,
+		Flags:      fs,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Initialize logger
-	logger, err := observability.NewLogger(config.LogLevel)
+	logger, err := observability.NewLogger(cfg.Observability.LogLevel)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
 		os.Exit(1)
@@ -83,18 +53,21 @@ func main() {
 
 	logger.Info("Starting RaftKV",
 		zap.String("version", "1.0.0"),
-		zap.String("http_addr", config.HTTPAddr),
-		zap.String("grpc_addr", config.GRPCAddr),
-		zap.Bool("grpc_enabled", config.EnableGRPC),
-		zap.String("data_dir", config.DataDir),
-		zap.Bool("raft_enabled", config.EnableRaft),
+		zap.String("http_addr", cfg.Server.HTTPAddr),
+		zap.String("grpc_addr", cfg.Server.GRPCAddr),
+		zap.Bool("grpc_enabled", cfg.Server.EnableGRPC),
+		zap.String("data_dir", cfg.Storage.DataDir),
+		zap.Bool("raft_enabled", cfg.Raft.Enabled),
+		zap.Bool("auth_enabled", cfg.Auth.Enabled),
+		zap.Bool("tls_enabled", cfg.TLS.Enabled),
+		zap.String("config_file", *configFile),
 	)
 
 	// Create storage - ALWAYS use DurableStore (unified architecture)
 	durableStore, err := storage.NewDurableStore(storage.DurableStoreConfig{
-		DataDir:       config.DataDir,
-		SyncOnWrite:   config.SyncOnWrite,
-		SnapshotEvery: config.SnapshotEvery,
+		DataDir:       cfg.Storage.DataDir,
+		SyncOnWrite:   cfg.Storage.SyncOnWrite,
+		SnapshotEvery: cfg.Storage.SnapshotEvery,
 	})
 	if err != nil {
 		logger.Fatal("Failed to create store", zap.Error(err))
@@ -104,56 +77,56 @@ func main() {
 	var store storage.Store = durableStore
 
 	// Wrap with cache if enabled
-	if config.EnableCache {
+	if cfg.Cache.Enabled {
 		store = storage.NewCachedStore(durableStore, storage.CacheConfig{
-			MaxSize: config.CacheSize,
-			TTL:     config.CacheTTL,
+			MaxSize: cfg.Cache.MaxSize,
+			TTL:     cfg.Cache.TTL,
 		})
 		logger.Info("Read cache enabled",
-			zap.Int("cache_size", config.CacheSize),
-			zap.Duration("cache_ttl", config.CacheTTL),
+			zap.Int("cache_size", cfg.Cache.MaxSize),
+			zap.Duration("cache_ttl", cfg.Cache.TTL),
 		)
 	}
 
-	if config.EnableRaft {
+	if cfg.Raft.Enabled {
 		logger.Info("Storage initialized with DurableStore (Raft cluster mode)",
-			zap.String("data_dir", config.DataDir),
-			zap.Bool("sync_on_write", config.SyncOnWrite),
-			zap.Bool("cache_enabled", config.EnableCache),
+			zap.String("data_dir", cfg.Storage.DataDir),
+			zap.Bool("sync_on_write", cfg.Storage.SyncOnWrite),
+			zap.Bool("cache_enabled", cfg.Cache.Enabled),
 		)
 	} else {
 		logger.Info("Storage initialized with DurableStore (single-node mode)",
-			zap.String("data_dir", config.DataDir),
-			zap.Bool("sync_on_write", config.SyncOnWrite),
-			zap.Bool("cache_enabled", config.EnableCache),
+			zap.String("data_dir", cfg.Storage.DataDir),
+			zap.Bool("sync_on_write", cfg.Storage.SyncOnWrite),
+			zap.Bool("cache_enabled", cfg.Cache.Enabled),
 		)
 	}
 
 	// Prepare TLS configuration if enabled (before Raft node creation)
 	var tlsConfig *security.TLSConfig
-	if config.EnableTLS {
+	if cfg.TLS.Enabled {
 		tlsConfig = &security.TLSConfig{
-			CertFile:     config.TLSCert,
-			KeyFile:      config.TLSKey,
-			ClientCAFile: config.TLSCA,
-			EnableMTLS:   config.EnableMTLS,
+			CertFile:     cfg.TLS.CertFile,
+			KeyFile:      cfg.TLS.KeyFile,
+			ClientCAFile: cfg.TLS.CAFile,
+			EnableMTLS:   cfg.TLS.EnableMTLS,
 			MinVersion:   0x0303, // TLS 1.2
 		}
 		logger.Info("TLS configuration loaded",
-			zap.String("cert", config.TLSCert),
-			zap.Bool("mtls", config.EnableMTLS),
+			zap.String("cert", cfg.TLS.CertFile),
+			zap.Bool("mtls", cfg.TLS.EnableMTLS),
 		)
 	}
 
 	// Create Raft node if enabled
 	var raftNode *consensus.RaftNode
-	if config.EnableRaft {
+	if cfg.Raft.Enabled {
 		raftNode, err = consensus.NewRaftNode(consensus.RaftConfig{
-			NodeID:    config.NodeID,
-			RaftAddr:  config.RaftAddr,
-			RaftDir:   config.RaftDir,
-			Bootstrap: config.Bootstrap,
-			JoinAddr:  config.JoinAddr,
+			NodeID:    cfg.Raft.NodeID,
+			RaftAddr:  cfg.Raft.RaftAddr,
+			RaftDir:   cfg.Raft.RaftDir,
+			Bootstrap: cfg.Raft.Bootstrap,
+			JoinAddr:  cfg.Raft.JoinAddr,
 			Store:     durableStore, // Pass concrete DurableStore type
 			TLSConfig: tlsConfig,    // Pass TLS config for inter-node encryption
 			Logger:    logger.Logger,
@@ -164,9 +137,9 @@ func main() {
 		defer raftNode.Shutdown()
 
 		logger.Info("Raft node created",
-			zap.String("node_id", config.NodeID),
-			zap.String("raft_addr", config.RaftAddr),
-			zap.Bool("bootstrap", config.Bootstrap),
+			zap.String("node_id", cfg.Raft.NodeID),
+			zap.String("raft_addr", cfg.Raft.RaftAddr),
+			zap.Bool("bootstrap", cfg.Raft.Bootstrap),
 		)
 
 		// Wait for leader election
@@ -189,19 +162,19 @@ func main() {
 	var apiKeyManager *auth.APIKeyManager
 	var jwtManager *auth.JWTManager
 
-	if config.EnableAuth {
+	if cfg.Auth.Enabled {
 		// Validate JWT secret
-		if config.AuthJWTSecret == "" {
-			logger.Fatal("JWT secret is required when authentication is enabled (use --auth-jwt-secret)")
+		if cfg.Auth.JWTSecret == "" {
+			logger.Fatal("JWT secret is required when authentication is enabled (use --auth.jwt-secret or RAFTKV_AUTH__JWT_SECRET env var)")
 		}
 
 		// Create auth managers
 		userManager = auth.NewUserManager(store)
 		apiKeyManager = auth.NewAPIKeyManager(store)
-		jwtManager = auth.NewJWTManager(config.AuthJWTSecret, config.AuthTokenExpiry)
+		jwtManager = auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.TokenExpiry)
 
 		logger.Info("Authentication enabled",
-			zap.Duration("token_expiry", config.AuthTokenExpiry),
+			zap.Duration("token_expiry", cfg.Auth.TokenExpiry),
 		)
 
 		// Create default admin user if it doesn't exist
@@ -223,7 +196,7 @@ func main() {
 			)
 
 			// Generate admin API key if requested
-			if config.AuthAdminKey != "" {
+			if cfg.Auth.AdminKey != "" {
 				// For simplicity, we'll just log that a custom admin key was requested
 				// In production, you'd want to properly handle this
 				logger.Info("Admin API key bootstrap requested",
@@ -234,18 +207,18 @@ func main() {
 	}
 
 	// Create servers
-	if config.EnableRaft {
+	if cfg.Raft.Enabled {
 		// Use Raft-aware HTTP server
 		raftHTTPServer := server.NewRaftHTTPServer(server.RaftHTTPServerConfig{
-			Addr:            config.HTTPAddr,
+			Addr:            cfg.Server.HTTPAddr,
 			RaftNode:        raftNode,
 			Logger:          logger,
 			Metrics:         metrics,
-			ReadTimeout:     config.ReadTimeout,
-			WriteTimeout:    config.WriteTimeout,
-			MaxRequestSize:  config.MaxRequestSize,
-			EnableRateLimit: config.EnableRateLimit,
-			RateLimit:       config.RateLimit,
+			ReadTimeout:     cfg.Performance.ReadTimeout,
+			WriteTimeout:    cfg.Performance.WriteTimeout,
+			MaxRequestSize:  cfg.Performance.MaxRequestSize,
+			EnableRateLimit: cfg.Performance.EnableRateLimit,
+			RateLimit:       cfg.Performance.RateLimit,
 			TLSConfig:       tlsConfig,
 		})
 
@@ -256,13 +229,13 @@ func main() {
 			}
 		}()
 
-		logger.Info("Raft HTTP server started", zap.String("addr", config.HTTPAddr))
+		logger.Info("Raft HTTP server started", zap.String("addr", cfg.Server.HTTPAddr))
 
 		// Start gRPC server if enabled
 		var grpcServer *server.GRPCServer
-		if config.EnableGRPC {
+		if cfg.Server.EnableGRPC {
 			grpcServer = server.NewGRPCServer(server.GRPCServerConfig{
-				Addr:      config.GRPCAddr,
+				Addr:      cfg.Server.GRPCAddr,
 				RaftNode:  raftNode,
 				Logger:    logger.Logger,
 				Metrics:   metrics,
@@ -275,11 +248,11 @@ func main() {
 				}
 			}()
 
-			logger.Info("gRPC server started", zap.String("addr", config.GRPCAddr))
+			logger.Info("gRPC server started", zap.String("addr", cfg.Server.GRPCAddr))
 		}
 
 		logger.Info("RaftKV is ready to accept requests (cluster mode)",
-			zap.Bool("grpc_enabled", config.EnableGRPC),
+			zap.Bool("grpc_enabled", cfg.Server.EnableGRPC),
 		)
 
 		// Wait for interrupt signal
@@ -287,17 +260,17 @@ func main() {
 	} else {
 		// Use standard HTTP server (single-node mode)
 		httpServer := server.NewHTTPServer(server.HTTPServerConfig{
-			Addr:            config.HTTPAddr,
+			Addr:            cfg.Server.HTTPAddr,
 			Store:           store,
 			Logger:          logger,
 			Metrics:         metrics,
-			ReadTimeout:     config.ReadTimeout,
-			WriteTimeout:    config.WriteTimeout,
-			MaxRequestSize:  config.MaxRequestSize,
-			EnableRateLimit: config.EnableRateLimit,
-			RateLimit:       config.RateLimit,
+			ReadTimeout:     cfg.Performance.ReadTimeout,
+			WriteTimeout:    cfg.Performance.WriteTimeout,
+			MaxRequestSize:  cfg.Performance.MaxRequestSize,
+			EnableRateLimit: cfg.Performance.EnableRateLimit,
+			RateLimit:       cfg.Performance.RateLimit,
 			TLSConfig:       tlsConfig,
-			AuthEnabled:     config.EnableAuth,
+			AuthEnabled:     cfg.Auth.Enabled,
 			UserManager:     userManager,
 			APIKeyManager:   apiKeyManager,
 			JWTManager:      jwtManager,
@@ -310,71 +283,12 @@ func main() {
 			}
 		}()
 
-		logger.Info("HTTP server started", zap.String("addr", config.HTTPAddr))
+		logger.Info("HTTP server started", zap.String("addr", cfg.Server.HTTPAddr))
 		logger.Info("RaftKV is ready to accept requests (single-node mode)")
 
 		// Wait for interrupt signal
 		waitForShutdown(logger, httpServer)
 	}
-}
-
-func parseFlags() Config {
-	config := Config{}
-
-	// Server flags
-	flag.StringVar(&config.HTTPAddr, "http-addr", ":8080", "HTTP server address")
-	flag.StringVar(&config.GRPCAddr, "grpc-addr", ":9090", "gRPC server address")
-	flag.BoolVar(&config.EnableGRPC, "grpc", false, "Enable gRPC server")
-
-	// Storage flags
-	flag.StringVar(&config.DataDir, "data-dir", "./data", "Data directory")
-	flag.BoolVar(&config.SyncOnWrite, "sync-on-write", true, "Sync writes to disk (durable but slower)")
-	flag.IntVar(&config.SnapshotEvery, "snapshot-every", 10000, "Snapshot every N operations")
-
-	// Raft flags
-	flag.BoolVar(&config.EnableRaft, "raft", false, "Enable Raft consensus")
-	flag.StringVar(&config.NodeID, "node-id", "node1", "Unique node ID")
-	flag.StringVar(&config.RaftAddr, "raft-addr", "localhost:7000", "Raft bind address")
-	flag.StringVar(&config.RaftDir, "raft-dir", "./data/raft", "Raft data directory")
-	flag.BoolVar(&config.Bootstrap, "bootstrap", false, "Bootstrap new cluster")
-	flag.StringVar(&config.JoinAddr, "join", "", "Join existing cluster at this address")
-
-	// Observability flags
-	flag.StringVar(&config.LogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-
-	// Performance flags
-	readTimeoutSec := flag.Int("read-timeout", 10, "Read timeout in seconds")
-	writeTimeoutSec := flag.Int("write-timeout", 10, "Write timeout in seconds")
-	flag.Int64Var(&config.MaxRequestSize, "max-request-size", 1024*1024, "Max request body size in bytes")
-	flag.BoolVar(&config.EnableRateLimit, "enable-rate-limit", false, "Enable rate limiting")
-	flag.IntVar(&config.RateLimit, "rate-limit", 1000, "Requests per second limit")
-
-	// Cache flags
-	flag.BoolVar(&config.EnableCache, "enable-cache", true, "Enable read cache")
-	flag.IntVar(&config.CacheSize, "cache-size", 10000, "Max number of entries in cache")
-	cacheTTLSec := flag.Int("cache-ttl", 0, "Cache TTL in seconds (0 = no expiration)")
-
-	// TLS flags
-	flag.BoolVar(&config.EnableTLS, "tls", false, "Enable TLS/HTTPS")
-	flag.StringVar(&config.TLSCert, "tls-cert", "certs/server-cert.pem", "TLS certificate file")
-	flag.StringVar(&config.TLSKey, "tls-key", "certs/server-key.pem", "TLS key file")
-	flag.StringVar(&config.TLSCA, "tls-ca", "certs/ca-cert.pem", "TLS CA certificate (for mTLS)")
-	flag.BoolVar(&config.EnableMTLS, "mtls", false, "Enable mutual TLS (client authentication)")
-
-	// Authentication flags
-	flag.BoolVar(&config.EnableAuth, "auth", false, "Enable authentication and authorization")
-	flag.StringVar(&config.AuthJWTSecret, "auth-jwt-secret", "", "JWT signing secret (required if auth enabled)")
-	authTokenExpirySec := flag.Int("auth-token-expiry", 3600, "JWT token expiry in seconds (default: 1 hour)")
-	flag.StringVar(&config.AuthAdminKey, "auth-admin-key", "", "Initial admin API key for bootstrap (optional)")
-
-	flag.Parse()
-
-	config.ReadTimeout = time.Duration(*readTimeoutSec) * time.Second
-	config.WriteTimeout = time.Duration(*writeTimeoutSec) * time.Second
-	config.CacheTTL = time.Duration(*cacheTTLSec) * time.Second
-	config.AuthTokenExpiry = time.Duration(*authTokenExpirySec) * time.Second
-
-	return config
 }
 
 func waitForShutdown(logger *observability.Logger, httpServer *server.HTTPServer) {

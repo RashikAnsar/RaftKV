@@ -1,0 +1,132 @@
+# RaftKV Configuration Example
+# This file shows all available configuration options with their descriptions
+
+# Server configuration
+server:
+  # HTTP server address
+  http_addr: ":8080"
+
+  # gRPC server address
+  grpc_addr: ":9090"
+
+  # Enable gRPC server (disabled by default)
+  enable_grpc: false
+
+# Storage configuration
+storage:
+  # Directory for storing data
+  data_dir: "./data"
+
+  # Sync writes to disk immediately (slower but more durable)
+  sync_on_write: true
+
+  # Create snapshot every N operations
+  snapshot_every: 10000
+
+# Write-Ahead Log (WAL) configuration
+wal:
+  # Enable batch writes for better throughput (10x improvement!)
+  batch_enabled: true
+
+  # Maximum number of operations per batch
+  batch_size: 100
+
+  # Maximum bytes per batch (1MB)
+  batch_bytes: 1048576
+
+  # Maximum time to wait for batch to fill
+  batch_wait_time: 10ms
+
+  # Enable automatic WAL compaction after snapshots
+  compaction_enabled: true
+
+  # Safety margin: keep this many entries before snapshot index
+  compaction_margin: 100
+
+# Cache configuration
+cache:
+  # Enable read cache
+  enabled: true
+
+  # Maximum number of entries in cache
+  max_size: 10000
+
+  # Cache entry TTL (0 = no expiration)
+  ttl: 0
+
+# Raft consensus configuration
+raft:
+  # Enable Raft consensus for clustering
+  enabled: false
+
+  # Unique node ID
+  node_id: "node1"
+
+  # Raft bind address for inter-node communication
+  raft_addr: "localhost:7000"
+
+  # Directory for Raft data
+  raft_dir: "./data/raft"
+
+  # Bootstrap a new cluster (only for first node)
+  bootstrap: false
+
+  # Join existing cluster at this address (leave empty if bootstrap)
+  join_addr: ""
+
+# Authentication and authorization configuration
+auth:
+  # Enable authentication
+  enabled: false
+
+  # JWT signing secret (REQUIRED if auth enabled)
+  # IMPORTANT: Use environment variable in production!
+  jwt_secret: ""
+
+  # JWT token expiry duration
+  token_expiry: 1h
+
+  # Initial admin API key for bootstrap (optional)
+  admin_key: ""
+
+# TLS/mTLS configuration
+tls:
+  # Enable TLS/HTTPS
+  enabled: false
+
+  # TLS certificate file
+  cert_file: "certs/server-cert.pem"
+
+  # TLS key file
+  key_file: "certs/server-key.pem"
+
+  # CA certificate for mTLS (client authentication)
+  ca_file: "certs/ca-cert.pem"
+
+  # Enable mutual TLS (client must present valid certificate)
+  enable_mtls: false
+
+# Observability configuration
+observability:
+  # Log level: debug, info, warn, error
+  log_level: "info"
+
+  # Enable Prometheus metrics on /metrics endpoint
+  metrics_enabled: true
+
+# Performance tuning
+performance:
+  # Read timeout for HTTP requests
+  read_timeout: 10s
+
+  # Write timeout for HTTP requests
+  write_timeout: 10s
+
+  # Maximum request body size (1MB)
+  max_request_size: 1048576
+
+  # Enable rate limiting
+  enable_rate_limit: false
+
+  # Requests per second limit (if rate limiting enabled)
+  rate_limit: 1000

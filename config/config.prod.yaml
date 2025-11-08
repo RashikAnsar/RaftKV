@@ -1,0 +1,58 @@
+# Production Configuration Template
+# IMPORTANT: Replace placeholders with actual values and use environment variables for secrets
+
+server:
+  http_addr: ":8080"
+  grpc_addr: ":9090"
+  enable_grpc: true
+
+storage:
+  data_dir: "/var/lib/raftkv"
+  sync_on_write: true  # Durability is critical in production
+  snapshot_every: 10000
+
+wal:
+  batch_enabled: true
+  batch_size: 100
+  batch_bytes: 1048576  # 1MB
+  batch_wait_time: 10ms
+  compaction_enabled: true
+  compaction_margin: 100
+
+cache:
+  enabled: true
+  max_size: 100000  # Larger cache for production
+  ttl: 0  # No expiration
+
+raft:
+  enabled: true  # Enable clustering
+  node_id: "node1"  # Change for each node
+  raft_addr: "192.168.1.10:7000"  # Replace with actual IP
+  raft_dir: "/var/lib/raftkv/raft"
+  bootstrap: true  # Only true for first node
+  join_addr: ""  # Set for nodes joining existing cluster
+
+auth:
+  enabled: true  # Always enable auth in production
+  # IMPORTANT: Set via environment variable RAFTKV_AUTH__JWT_SECRET
+  jwt_secret: "${RAFTKV_JWT_SECRET}"
+  token_expiry: 1h
+  admin_key: ""
+
+tls:
+  enabled: true  # Always enable TLS in production
+  cert_file: "/etc/raftkv/tls/server-cert.pem"
+  key_file: "/etc/raftkv/tls/server-key.pem"
+  ca_file: "/etc/raftkv/tls/ca-cert.pem"
+  enable_mtls: true  # Enable for enhanced security
+
+observability:
+  log_level: "info"  # Use "warn" or "error" for high-traffic systems
+  metrics_enabled: true
+
+performance:
+  read_timeout: 10s
+  write_timeout: 10s
+  max_request_size: 1048576  # 1MB
+  enable_rate_limit: true  # Enable rate limiting
+  rate_limit: 10000  # Adjust based on your needs

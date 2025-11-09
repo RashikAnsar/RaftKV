@@ -149,6 +149,53 @@ docker-test:
 	@echo "\n4. Getting cluster leader..."
 	@curl -s http://localhost:8081/cluster/leader | jq
 
+# Monitoring targets
+docker-up-monitoring:
+	@echo "Starting RaftKV cluster with monitoring stack..."
+	@echo "This will start: 3 RaftKV nodes + HAProxy + Prometheus + Grafana"
+	@docker-compose -f deployments/docker/docker-compose.yml \
+		-f deployments/docker/docker-compose.monitoring.yml up --build
+
+docker-down-monitoring:
+	@echo "Stopping RaftKV cluster and monitoring stack..."
+	@docker-compose -f deployments/docker/docker-compose.yml \
+		-f deployments/docker/docker-compose.monitoring.yml down
+
+docker-monitoring-only:
+	@echo "Starting monitoring stack only (Prometheus + Grafana)..."
+	@echo "Note: RaftKV cluster must be running first"
+	@docker-compose -f deployments/docker/docker-compose.monitoring.yml up
+
+docker-monitoring-stop:
+	@echo "Stopping monitoring stack..."
+	@docker-compose -f deployments/docker/docker-compose.monitoring.yml down
+
+docker-monitoring-clean:
+	@echo "Cleaning monitoring data volumes..."
+	@docker-compose -f deployments/docker/docker-compose.monitoring.yml down -v
+
+docker-monitoring-logs:
+	@echo "Tailing monitoring logs..."
+	@docker-compose -f deployments/docker/docker-compose.monitoring.yml logs -f
+
+docker-monitoring-urls:
+	@echo ""
+	@echo "📊 Monitoring Stack URLs:"
+	@echo "  Prometheus: http://localhost:9999"
+	@echo "  Grafana:    http://localhost:3000 (admin/admin)"
+	@echo ""
+	@echo "RaftKV Cluster URLs:"
+	@echo "  HAProxy:    http://localhost:8080"
+	@echo "  Node1:      http://localhost:8081"
+	@echo "  Node2:      http://localhost:8082"
+	@echo "  Node3:      http://localhost:8083"
+	@echo ""
+	@echo "Dashboards available in Grafana:"
+	@echo "  - RaftKV Overview (operations, latency, errors)"
+	@echo "  - Storage & Persistence (WAL, snapshots, cache)"
+	@echo "  - Cluster Health (Raft metrics)"
+	@echo ""
+
 # Raft cluster targets
 raft-cluster: build
 	@echo "Starting 3-node Raft cluster..."
@@ -460,13 +507,23 @@ help:
 	@echo "  make bench-compare   - Run benchmarks 5x for comparison baseline"
 	@echo ""
 	@echo "Docker deployment:"
-	@echo "  make docker-build    - Build Docker image"
-	@echo "  make docker-up       - Start 3-node cluster with Docker Compose"
-	@echo "  make docker-up-lb    - Start cluster with HAProxy load balancer"
-	@echo "  make docker-down     - Stop Docker cluster"
-	@echo "  make docker-clean    - Stop and remove all Docker resources"
-	@echo "  make docker-logs     - View cluster logs"
-	@echo "  make docker-test     - Test the Docker cluster"
+	@echo "  make docker-build           - Build Docker image"
+	@echo "  make docker-up              - Start 3-node cluster with Docker Compose"
+	@echo "  make docker-up-lb           - Start cluster with HAProxy load balancer"
+	@echo "  make docker-up-monitoring   - Start cluster + monitoring (Prometheus + Grafana)"
+	@echo "  make docker-down            - Stop Docker cluster"
+	@echo "  make docker-down-monitoring - Stop cluster and monitoring"
+	@echo "  make docker-clean           - Stop and remove all Docker resources"
+	@echo "  make docker-logs            - View cluster logs"
+	@echo "  make docker-test            - Test the Docker cluster"
+	@echo ""
+	@echo "Monitoring (Docker):"
+	@echo "  make docker-up-monitoring     - Start RaftKV + Prometheus + Grafana"
+	@echo "  make docker-monitoring-only   - Start monitoring stack only"
+	@echo "  make docker-monitoring-stop   - Stop monitoring stack"
+	@echo "  make docker-monitoring-clean  - Clean monitoring data volumes"
+	@echo "  make docker-monitoring-logs   - View monitoring logs"
+	@echo "  make docker-monitoring-urls   - Show monitoring URLs"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean           - Clean build artifacts and data"

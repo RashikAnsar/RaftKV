@@ -1,0 +1,50 @@
+# Prometheus Configuration for RaftKV Docker Compose Cluster
+# This config is optimized for the docker-compose deployment
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'raftkv-docker'
+    environment: 'development'
+
+# Alertmanager configuration (uncomment if using alertmanager)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - 'alertmanager:9093'
+
+# Load alerting rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # RaftKV 3-node cluster (Docker Compose)
+  - job_name: 'raftkv'
+    static_configs:
+      - targets:
+        - 'node1:8080'
+        - 'node2:8080'
+        - 'node3:8080'
+        labels:
+          deployment: 'docker-compose'
+
+  # HAProxy load balancer stats
+  - job_name: 'haproxy'
+    static_configs:
+      - targets:
+        - 'haproxy:8404'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets:
+        - 'localhost:9090'
+
+  # Grafana monitoring (optional)
+  - job_name: 'grafana'
+    static_configs:
+      - targets:
+        - 'grafana:3000'

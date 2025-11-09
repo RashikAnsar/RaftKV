@@ -1,0 +1,202 @@
+groups:
+  - name: raftkv_critical
+    interval: 30s
+    rules:
+      # Raft Cluster Health - Critical Alerts
+      - alert: RaftNoLeader
+        expr: absent(raft_leader_id)
+        for: 1m
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft cluster has no leader"
+          description: "No leader has been elected for more than 1 minute. The cluster cannot process writes."
+          runbook: "Check node connectivity, review Raft logs for election failures, verify quorum is available."
+
+      - alert: RaftClusterUnhealthy
+        expr: raft_peers_count < 2
+        for: 2m
+        labels:
+          severity: critical
+          component: raft
+        annotations:
+          summary: "Raft cluster below quorum"
+          description: "Less than quorum nodes available. Current peers: {{ $value }}. Cluster cannot tolerate additional failures."
+          runbook: "Investigate downed nodes, check network connectivity, review node logs for crashes or network partitions."
+
+      # Storage & Disk - Critical Alerts
+      - alert: DiskSpaceCritical
+        expr: raftkv_wal_size_bytes > 10737418240 OR node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"} < 0.10
+        for: 5m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "Critical disk space shortage"
+          description: "WAL size exceeds 10GB or disk usage is above 90%. Risk of out-of-disk failures."
+          runbook: "Trigger manual snapshot, verify WAL compaction is working, increase disk capacity, or clean old snapshots."
+
+      - alert: WALCompactionStalled
+        expr: increase(raftkv_wal_entries_compacted_total[30m]) == 0 AND raftkv_wal_segments_total > 50
+        for: 1h
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: "WAL compaction appears stalled"
+          description: "No compaction activity in 30 minutes despite {{ $value }} WAL segments. Disk usage will grow unbounded."
+          runbook: "Check for snapshot creation failures, verify compaction is enabled, review storage logs for errors."
+
+      # HTTP Service - Critical Alerts
+      - alert: HighErrorRate
+        expr: rate(kvstore_http_requests_total{status=~"5.."}[5m]) / rate(kvstore_http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: http
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "More than 5% of requests are returning 5xx errors for 5 minutes. Current rate: {{ $value | humanizePercentage }}."
+          runbook: "Check storage health, review application logs, verify Raft cluster is operational, check for resource exhaustion."
+
+      - alert: ServiceDown
+        expr: up{job="raftkv"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "RaftKV service is down"
+          description: "Instance {{ $labels.instance }} is not responding to health checks."
+          runbook: "Check process status, review crash logs, verify network connectivity, restart service if necessary."
+
+  - name: raftkv_warnings
+    interval: 1m
+    rules:
+      # Performance - Warning Alerts
+      - alert: HighWriteLatency
+        expr: histogram_quantile(0.99, rate(kvstore_storage_operation_duration_seconds_bucket{operation="put"}[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "High write latency detected"
+          description: "P99 write latency is {{ $value | humanizeDuration }}. Expected < 100ms."
+          runbook: "Check disk I/O, verify WAL batch settings, review Raft replication lag, check for resource contention."
+
+      - alert: HighReadLatency
+        expr: histogram_quantile(0.99, rate(kvstore_storage_operation_duration_seconds_bucket{operation="get"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "High read latency detected"
+          description: "P99 read latency is {{ $value | humanizeDuration }}. Expected < 50ms."
+          runbook: "Check cache hit rate, review memory pressure, verify storage performance, check for lock contention."
+
+      # Cache Performance
+      - alert: LowCacheHitRate
+        expr: rate(kvstore_cache_hits_total[10m]) / (rate(kvstore_cache_hits_total[10m]) + rate(kvstore_cache_misses_total[10m])) < 0.20
+        for: 30m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}. Expected > 20%."
+          runbook: "Consider increasing cache size, review access patterns, verify cache is enabled and configured properly."
+
+      # Storage Health
+      - alert: HighWALSegmentCount
+        expr: raftkv_wal_segments_total > 100
+        for: 15m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Too many WAL segments"
+          description: "{{ $value }} WAL segments exist. This may indicate compaction issues."
+          runbook: "Verify snapshot creation is working, check compaction settings, consider triggering manual snapshot."
+
+      - alert: LargeSnapshotDuration
+        expr: raftkv_snapshot_creation_duration_seconds > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Snapshot creation taking too long"
+          description: "Snapshot creation took {{ $value | humanizeDuration }}. Expected < 10s."
+          runbook: "Check disk I/O performance, review data size, consider adjusting snapshot interval or format."
+
+      # Disk Space - Warning
+      - alert: DiskSpaceWarning
+        expr: raftkv_wal_size_bytes > 5368709120 OR node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"} < 0.20
+        for: 10m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "Disk space running low"
+          description: "WAL size exceeds 5GB or disk usage is above 80%."
+          runbook: "Monitor disk usage trend, plan for capacity increase, verify WAL compaction is functioning."
+
+      # HTTP Performance
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, rate(kvstore_http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: http
+        annotations:
+          summary: "High HTTP request latency"
+          description: "P95 HTTP latency is {{ $value | humanizeDuration }}."
+          runbook: "Check storage latency, review Raft replication lag, verify no resource bottlenecks."
+
+      # Raft Health
+      - alert: FrequentLeaderElections
+        expr: increase(raft_leader_elections_total[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: raft
+        annotations:
+          summary: "Frequent leader elections"
+          description: "{{ $value }} leader elections in the last hour. This may indicate network instability."
+          runbook: "Check network latency between nodes, review Raft election timeout settings, verify no node is flapping."
+
+      - alert: HighRaftLogSize
+        expr: raftkv_raft_log_size_bytes > 1073741824
+        for: 15m
+        labels:
+          severity: warning
+          component: raft
+        annotations:
+          summary: "Raft log size is large"
+          description: "Raft log is {{ $value | humanize1024 }}. This may impact memory and recovery time."
+          runbook: "Verify snapshot creation is working, consider increasing snapshot frequency, check for snapshot failures."
+
+  - name: raftkv_info
+    interval: 5m
+    rules:
+      # Informational Metrics (for recording rules, not alerts)
+      - record: raftkv:storage_operations_rate:5m
+        expr: rate(kvstore_storage_operations_total[5m])
+
+      - record: raftkv:http_requests_rate:5m
+        expr: rate(kvstore_http_requests_total[5m])
+
+      - record: raftkv:cache_hit_rate:5m
+        expr: rate(kvstore_cache_hits_total[5m]) / (rate(kvstore_cache_hits_total[5m]) + rate(kvstore_cache_misses_total[5m]))
+
+      - record: raftkv:error_rate:5m
+        expr: rate(kvstore_http_requests_total{status=~"5.."}[5m]) / rate(kvstore_http_requests_total[5m])
+
+      - record: raftkv:write_latency_p99:5m
+        expr: histogram_quantile(0.99, rate(kvstore_storage_operation_duration_seconds_bucket{operation="put"}[5m]))
+
+      - record: raftkv:read_latency_p99:5m
+        expr: histogram_quantile(0.99, rate(kvstore_storage_operation_duration_seconds_bucket{operation="get"}[5m]))

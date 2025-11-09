@@ -42,3 +42,6 @@ config/config.yaml
 config/config.local.yaml
 config/*.local.yaml
 *.local.yaml
+
+
+*.md

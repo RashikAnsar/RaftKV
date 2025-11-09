@@ -1,0 +1,88 @@
+# Prometheus Configuration for RaftKV
+# This is an example configuration showing how to scrape RaftKV metrics and load alerting rules
+
+global:
+  scrape_interval: 15s      # How frequently to scrape targets
+  evaluation_interval: 15s  # How frequently to evaluate rules
+  external_labels:
+    cluster: 'raftkv-prod'
+    environment: 'production'
+
+# Alertmanager configuration (optional)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - 'alertmanager:9093'  # Uncomment and configure if using Alertmanager
+
+# Load alerting rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # RaftKV single-node configuration
+  - job_name: 'raftkv'
+    static_configs:
+      - targets: ['localhost:8080']  # RaftKV HTTP endpoint (metrics exposed on /metrics)
+        labels:
+          instance: 'raftkv-node1'
+          role: 'standalone'
+
+  # RaftKV 3-node cluster configuration
+  # Uncomment and configure for cluster deployments
+  # - job_name: 'raftkv-cluster'
+  #   static_configs:
+  #     - targets:
+  #       - 'raftkv-node1:8080'
+  #       - 'raftkv-node2:8080'
+  #       - 'raftkv-node3:8080'
+  #       labels:
+  #         cluster: 'raftkv-prod'
+
+  # Docker Compose cluster configuration
+  # - job_name: 'raftkv-docker'
+  #   static_configs:
+  #     - targets:
+  #       - 'node1:8080'
+  #       - 'node2:8080'
+  #       - 'node3:8080'
+  #       labels:
+  #         deployment: 'docker-compose'
+
+  # Kubernetes service discovery configuration
+  # - job_name: 'raftkv-k8s'
+  #   kubernetes_sd_configs:
+  #     - role: pod
+  #       namespaces:
+  #         names:
+  #           - raftkv
+  #   relabel_configs:
+  #     # Only scrape pods with label app=raftkv
+  #     - source_labels: [__meta_kubernetes_pod_label_app]
+  #       action: keep
+  #       regex: raftkv
+  #     # Use pod name as instance label
+  #     - source_labels: [__meta_kubernetes_pod_name]
+  #       target_label: instance
+  #     # Add namespace label
+  #     - source_labels: [__meta_kubernetes_namespace]
+  #       target_label: kubernetes_namespace
+  #     # Add node name label
+  #     - source_labels: [__meta_kubernetes_pod_node_name]
+  #       target_label: kubernetes_node
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Optional: Node exporter for system metrics (disk, CPU, memory)
+  # Install node_exporter on each RaftKV host for comprehensive monitoring
+  # - job_name: 'node-exporter'
+  #   static_configs:
+  #     - targets:
+  #       - 'localhost:9100'
+  #       - 'raftkv-node1:9100'
+  #       - 'raftkv-node2:9100'
+  #       - 'raftkv-node3:9100'

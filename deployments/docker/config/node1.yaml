@@ -1,0 +1,37 @@
+# RaftKV Configuration - Node 1 (Bootstrap/Leader)
+# Docker Compose deployment
+
+server:
+  http_addr: ":8080"
+  grpc_addr: ":9090"
+  enable_grpc: true
+  read_timeout: 30s
+  write_timeout: 30s
+
+storage:
+  data_dir: "/data"
+  sync_on_write: true
+
+raft:
+  enabled: true
+  node_id: "node1"
+  raft_addr: "node1:7000"
+  raft_dir: "/data/raft"
+  bootstrap: true
+  # join_addr is not needed for bootstrap node
+
+  # Raft tuning
+  heartbeat_timeout: 1s
+  election_timeout: 1s
+  snapshot_interval: 120s
+  snapshot_threshold: 8192
+
+cache:
+  enabled: true
+  max_size: 10000
+  ttl: 5m
+
+observability:
+  log_level: "info"
+  log_format: "json"
+  metrics_enabled: true

@@ -79,17 +79,17 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(kvstore_storage_operations_total{operation=\"get\"}[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total{method=\"GET\",status=\"OK\"}[1m]))",
           "legendFormat": "Read Ops/sec",
           "refId": "A"
         },
         {
-          "expr": "rate(kvstore_storage_operations_total{operation=\"put\"}[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total{method=\"PUT\",status=\"Created\"}[1m]))",
           "legendFormat": "Write Ops/sec",
           "refId": "B"
         },
         {
-          "expr": "rate(kvstore_storage_operations_total{operation=\"delete\"}[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total{method=\"DELETE\"}[1m]))",
           "legendFormat": "Delete Ops/sec",
           "refId": "C"
         }
@@ -244,7 +244,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(kvstore_http_requests_total{status=~\"5..\"}[5m]) / rate(kvstore_http_requests_total[5m])",
+          "expr": "sum(rate(kvstore_http_requests_total{status=~\"Internal Server Error\"}[5m])) / sum(rate(kvstore_http_requests_total[5m]))",
           "refId": "A"
         }
       ],
@@ -292,7 +292,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "kvstore_storage_keys_total",
+          "expr": "sum(kvstore_storage_keys_total)",
           "refId": "A"
         }
       ],
@@ -407,7 +407,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(kvstore_http_requests_total[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total[1m]))",
           "refId": "A"
         }
       ],
@@ -475,7 +475,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "kvstore_storage_keys_total",
+          "expr": "sum(kvstore_storage_keys_total) by (job)",
           "legendFormat": "Total Keys",
           "refId": "A"
         }
@@ -548,17 +548,17 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(kvstore_http_requests_total{status=~\"2..\"}[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total{status=~\"OK|Created\"}[1m]))",
           "legendFormat": "2xx Success",
           "refId": "A"
         },
         {
-          "expr": "rate(kvstore_http_requests_total{status=~\"4..\"}[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total{status=~\"Not Found|Bad Request\"}[1m]))",
           "legendFormat": "4xx Client Error",
           "refId": "B"
         },
         {
-          "expr": "rate(kvstore_http_requests_total{status=~\"5..\"}[1m])",
+          "expr": "sum(rate(kvstore_http_requests_total{status=~\"Internal Server Error|Temporary Redirect\"}[1m]))",
           "legendFormat": "5xx Server Error",
           "refId": "C"
         }

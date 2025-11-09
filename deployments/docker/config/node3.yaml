@@ -1,0 +1,37 @@
+# RaftKV Configuration - Node 3 (Follower)
+# Docker Compose deployment
+
+server:
+  http_addr: ":8080"
+  grpc_addr: ":9090"
+  enable_grpc: true
+  read_timeout: 30s
+  write_timeout: 30s
+
+storage:
+  data_dir: "/data"
+  sync_on_write: true
+
+raft:
+  enabled: true
+  node_id: "node3"
+  raft_addr: "node3:7000"
+  raft_dir: "/data/raft"
+  bootstrap: false
+  join_addr: "http://node1:8080"
+
+  # Raft tuning
+  heartbeat_timeout: 1s
+  election_timeout: 1s
+  snapshot_interval: 120s
+  snapshot_threshold: 8192
+
+cache:
+  enabled: true
+  max_size: 10000
+  ttl: 5m
+
+observability:
+  log_level: "info"
+  log_format: "json"
+  metrics_enabled: true

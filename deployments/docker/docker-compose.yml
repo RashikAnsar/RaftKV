@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Node 1 - Bootstrap node (initial leader)
   node1:
@@ -11,31 +9,15 @@ services:
     networks:
       - raftkv-network
     ports:
-      - "8081:8080"  # HTTP API
-      - "9091:9090"  # gRPC API
-      - "7001:7000"  # Raft
+      - "8081:8080" # HTTP API
+      - "9091:9090" # gRPC API
+      - "7001:7000" # Raft
     volumes:
       - node1-data:/data
-    environment:
-      - NODE_ID=node1
-      - RAFT_ADDR=node1:7000
-      - HTTP_ADDR=:8080
-      - GRPC_ADDR=:9090
-    command: >
-      --raft
-      --grpc
-      --node-id=node1
-      --http-addr=:8080
-      --grpc-addr=:9090
-      --raft-addr=node1:7000
-      --raft-dir=/data/raft
-      --data-dir=/data
-      --bootstrap
-      --enable-cache=true
-      --cache-size=10000
-      --log-level=info
+      - ./config/node1.yaml:/config/node.yaml:ro
+    command: [ "--config=/config/node.yaml" ]
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -56,29 +38,13 @@ services:
       - "7002:7000"
     volumes:
       - node2-data:/data
-    environment:
-      - NODE_ID=node2
-      - RAFT_ADDR=node2:7000
-      - HTTP_ADDR=:8080
-      - GRPC_ADDR=:9090
-    command: >
-      --raft
-      --grpc
-      --node-id=node2
-      --http-addr=:8080
-      --grpc-addr=:9090
-      --raft-addr=node2:7000
-      --raft-dir=/data/raft
-      --data-dir=/data
-      --join=http://node1:8080
-      --enable-cache=true
-      --cache-size=10000
-      --log-level=info
+      - ./config/node2.yaml:/config/node.yaml:ro
+    entrypoint: [ "/bin/sh", "-c", "sleep 5 && /usr/local/bin/kvstore --config=/config/node.yaml" ]
     depends_on:
       node1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -99,29 +65,13 @@ services:
       - "7003:7000"
     volumes:
       - node3-data:/data
-    environment:
-      - NODE_ID=node3
-      - RAFT_ADDR=node3:7000
-      - HTTP_ADDR=:8080
-      - GRPC_ADDR=:9090
-    command: >
-      --raft
-      --grpc
-      --node-id=node3
-      --http-addr=:8080
-      --grpc-addr=:9090
-      --raft-addr=node3:7000
-      --raft-dir=/data/raft
-      --data-dir=/data
-      --join=http://node1:8080
-      --enable-cache=true
-      --cache-size=10000
-      --log-level=info
+      - ./config/node3.yaml:/config/node.yaml:ro
+    entrypoint: [ "/bin/sh", "-c", "sleep 5 && /usr/local/bin/kvstore --config=/config/node.yaml" ]
     depends_on:
       node1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health" ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -134,9 +84,9 @@ services:
     networks:
       - raftkv-network
     ports:
-      - "8080:8080"  # HTTP load balanced
-      - "9090:9090"  # gRPC load balanced
-      - "8404:8404"  # HAProxy stats
+      - "8080:8080" # HTTP load balanced
+      - "9090:9090" # gRPC load balanced
+      - "8404:8404" # HAProxy stats
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
@@ -144,7 +94,7 @@ services:
       - node2
       - node3
     healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      test: [ "CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg" ]
       interval: 10s
       timeout: 3s
       retries: 3

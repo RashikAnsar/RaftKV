@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test
+.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test
 
 # Variables
 BINARY_NAME=kvstore
@@ -102,6 +102,11 @@ bench-compare:
 fmt:
 	@echo "Formatting code..."
 	$(GO) fmt ./...
+
+lint:
+	@echo "Running linters..."
+	@which golangci-lint > /dev/null || (echo "golangci-lint not found. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
+	golangci-lint run ./...
 
 clean:
 	@echo "Cleaning..."
@@ -528,6 +533,7 @@ help:
 	@echo "Utilities:"
 	@echo "  make clean           - Clean build artifacts and data"
 	@echo "  make fmt             - Format code"
+	@echo "  make lint            - Run linters (golangci-lint)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  # Quickstart (recommended)"

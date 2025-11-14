@@ -245,9 +245,9 @@ See [docs/OPERATIONS.md#monitoring](docs/OPERATIONS.md#monitoring) for complete 
 
 | Document                               | Description                                     |
 | -------------------------------------- | ----------------------------------------------- |
-| [ARCHITECTURE](docs/ARCHITECTURE.md)   | **Complete system architecture**                |
-| [**DEPLOYMENT.md**](DEPLOYMENT.md)     | Deployment instructions                         | DevOps, SRE     |
-| [**OPERATIONS.md**](OPERATIONS.md)     | Operations runbook                              | Operations, SRE |
+| [ARCHITECTURE](docs/ARCHITECTURE.md)   | Complete system architecture                    |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md)    | Deployment instructions                         |
+| [OPERATIONS.md](docs/OPERATIONS.md)    | Operations runbook                              |
 | [config](config/README.md)             | Configuration file documentation                |
 | [API_REFERENCE](docs/API_REFERENCE.md) | Detailed progress report and feature completion |
 

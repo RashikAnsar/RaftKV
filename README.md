@@ -65,6 +65,8 @@ make build
 # With TLS
 ./bin/kvstore --auth --auth-jwt-secret "secret" \
   --tls --tls-cert certs/server-cert.pem --tls-key certs/server-key.pem
+
+# Alternatively you can use make commands to start single node `make run-server` or `make tls-server`
 ```
 
 **Using the CLI**:
@@ -189,14 +191,14 @@ docker run -d \
 
 ### Key Metrics
 
-| Category | Metrics |
-|----------|---------|
-| **HTTP** | Requests/sec, latency (P50/P95/P99), error rate, request/response size |
-| **Storage** | Operations/sec, latency, key count, snapshot count |
-| **WAL** | Segment count, disk usage, compaction rate, compaction duration |
-| **Raft** | Log entries, log size, replication lag (requires instrumentation) |
-| **Cache** | Hit rate, hits/misses/evictions |
-| **Snapshots** | Size, creation duration |
+| Category      | Metrics                                                                |
+| ------------- | ---------------------------------------------------------------------- |
+| **HTTP**      | Requests/sec, latency (P50/P95/P99), error rate, request/response size |
+| **Storage**   | Operations/sec, latency, key count, snapshot count                     |
+| **WAL**       | Segment count, disk usage, compaction rate, compaction duration        |
+| **Raft**      | Log entries, log size, replication lag (requires instrumentation)      |
+| **Cache**     | Hit rate, hits/misses/evictions                                        |
+| **Snapshots** | Size, creation duration                                                |
 
 ### Alerting
 
@@ -219,20 +221,20 @@ See [docs/OPERATIONS.md#monitoring](docs/OPERATIONS.md#monitoring) for complete 
 
 ### Benchmarks (Single Node, Apple M1)
 
-| Operation | Throughput | Latency (P99) |
-|-----------|------------|---------------|
-| **Read** (cached) | ~500K ops/sec | <1ms |
-| **Read** (uncached) | ~200K ops/sec | <5ms |
-| **Write** (batched) | ~200K ops/sec | <20ms |
-| **Write** (unbatched) | ~20K ops/sec | <50ms |
+| Operation             | Throughput    | Latency (P99) |
+| --------------------- | ------------- | ------------- |
+| **Read** (cached)     | ~500K ops/sec | <1ms          |
+| **Read** (uncached)   | ~200K ops/sec | <5ms          |
+| **Write** (batched)   | ~200K ops/sec | <20ms         |
+| **Write** (unbatched) | ~20K ops/sec  | <50ms         |
 
 ### Cluster Performance (3-node, batched writes)
 
-| Operation | Throughput | Latency (P99) |
-|-----------|------------|---------------|
-| **Write** | >50K ops/sec | <30ms |
-| **Read** (from followers) | >200K ops/sec | <10ms |
-| **Read** (linearizable) | ~50K ops/sec | <30ms |
+| Operation                 | Throughput    | Latency (P99) |
+| ------------------------- | ------------- | ------------- |
+| **Write**                 | >50K ops/sec  | <30ms         |
+| **Read** (from followers) | >200K ops/sec | <10ms         |
+| **Read** (linearizable)   | ~50K ops/sec  | <30ms         |
 
 **Performance Features**:
 - **Batch Writes**: Accumulate writes for 10ms, ONE fsync per batch (10x improvement)
@@ -241,14 +243,13 @@ See [docs/OPERATIONS.md#monitoring](docs/OPERATIONS.md#monitoring) for complete 
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | **Complete system architecture** |
-| [MONITORING.md](docs/MONITORING.md) | Complete monitoring guide with Prometheus and Grafana |
-| [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) | Authentication and RBAC setup |
-| [TLS_IMPLEMENTATION_SUMMARY.md](TLS_IMPLEMENTATION_SUMMARY.md) | TLS/mTLS implementation details |
-| [config/README.md](config/README.md) | Configuration file documentation |
-| [PROGRESS_REPORT.md](PROGRESS_REPORT.md) | Detailed progress report and feature completion |
+| Document                               | Description                                     |
+| -------------------------------------- | ----------------------------------------------- |
+| [ARCHITECTURE](docs/ARCHITECTURE.md)   | **Complete system architecture**                |
+| [**DEPLOYMENT.md**](DEPLOYMENT.md)     | Deployment instructions                         | DevOps, SRE     |
+| [**OPERATIONS.md**](OPERATIONS.md)     | Operations runbook                              | Operations, SRE |
+| [config](config/README.md)             | Configuration file documentation                |
+| [API_REFERENCE](docs/API_REFERENCE.md) | Detailed progress report and feature completion |
 
 ### Coming Soon
 

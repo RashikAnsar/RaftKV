@@ -1,0 +1,150 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+
+permissions:
+  contents: read
+
+jobs:
+  single-node:
+    name: Single Node Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run single node integration tests
+        run: |
+          if [ -d "test/integration" ]; then
+            go test -v -timeout 10m -tags integration ./test/integration/single_node_test.go
+          else
+            echo "Integration tests not yet implemented, skipping..."
+          fi
+
+  cluster:
+    name: Cluster Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start Docker Compose cluster
+        run: |
+          if [ -f "deployments/docker/docker-compose.yml" ]; then
+            cd deployments/docker
+            docker-compose up -d
+            echo "Waiting for cluster to be ready..."
+            sleep 15
+            docker-compose ps
+          else
+            echo "Docker compose not yet available, skipping..."
+          fi
+
+      - name: Run cluster integration tests
+        run: |
+          if [ -d "test/integration" ] && [ -f "test/integration/cluster_test.go" ]; then
+            go test -v -timeout 15m -tags integration ./test/integration/cluster_test.go
+          else
+            echo "Cluster tests not yet implemented, skipping..."
+          fi
+
+      - name: Run failover tests
+        run: |
+          if [ -d "test/integration" ] && [ -f "test/integration/failover_test.go" ]; then
+            go test -v -timeout 15m -tags integration ./test/integration/failover_test.go
+          else
+            echo "Failover tests not yet implemented, skipping..."
+          fi
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          if [ -f "deployments/docker/docker-compose.yml" ]; then
+            cd deployments/docker
+            docker-compose logs
+          fi
+
+      - name: Stop Docker Compose cluster
+        if: always()
+        run: |
+          if [ -f "deployments/docker/docker-compose.yml" ]; then
+            cd deployments/docker
+            docker-compose down -v
+          fi
+
+  chaos:
+    name: Chaos Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run chaos tests
+        run: |
+          if [ -d "test/chaos" ]; then
+            go test -v -timeout 20m -tags chaos ./test/chaos/...
+          else
+            echo "Chaos tests not yet implemented, skipping..."
+          fi
+
+  k8s-validation:
+    name: Kubernetes Manifests Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.29.0'
+
+      - name: Install kubeconform
+        run: |
+          wget https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+          tar xf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate Kubernetes manifests
+        run: |
+          if [ -d "deployments/k8s" ]; then
+            kubeconform -strict -summary deployments/k8s/*.yaml
+          else
+            echo "K8s manifests not yet available, skipping..."
+          fi
+
+      - name: Dry run kubectl apply
+        run: |
+          if [ -d "deployments/k8s" ]; then
+            kubectl apply --dry-run=client -f deployments/k8s/
+          else
+            echo "K8s manifests not yet available, skipping..."
+          fi

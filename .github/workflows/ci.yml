@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: ['1.22', '1.23']
+        go-version: ['1.23', '1.25']
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage to Codecov
-        if: matrix.go-version == '1.23'
+        if: matrix.go-version == '1.25'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.out
@@ -74,7 +74,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Check test coverage
-        if: matrix.go-version == '1.23'
+        if: matrix.go-version == '1.25'
         run: |
           go tool cover -func=coverage.out
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print substr($3, 1, length($3)-1)}')

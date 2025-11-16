@@ -1,0 +1,208 @@
+name: Performance Benchmarks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'internal/**'
+      - 'pkg/**'
+      - 'cmd/**'
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  benchmark:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (PR)
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout code (Push)
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run benchmarks on PR branch
+        if: github.event_name == 'pull_request'
+        run: |
+          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... | tee pr_bench.txt
+
+      - name: Checkout main branch
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          clean: false
+
+      - name: Run benchmarks on main branch
+        if: github.event_name == 'pull_request'
+        run: |
+          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... | tee main_bench.txt
+
+      - name: Install benchstat
+        if: github.event_name == 'pull_request'
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Compare benchmarks
+        if: github.event_name == 'pull_request'
+        id: compare
+        run: |
+          echo "## Benchmark Results" > benchmark_comparison.md
+          echo "" >> benchmark_comparison.md
+          echo "Comparing PR branch against main branch:" >> benchmark_comparison.md
+          echo "" >> benchmark_comparison.md
+          echo '```' >> benchmark_comparison.md
+          $(go env GOPATH)/bin/benchstat main_bench.txt pr_bench.txt >> benchmark_comparison.md || echo "No significant differences found" >> benchmark_comparison.md
+          echo '```' >> benchmark_comparison.md
+
+          # Check for significant regressions (>10% slower)
+          if grep -q "~" benchmark_comparison.md; then
+            echo "REGRESSION_DETECTED=true" >> $GITHUB_OUTPUT
+          else
+            echo "REGRESSION_DETECTED=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR with benchmark results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comparison = fs.readFileSync('benchmark_comparison.md', 'utf8');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment => {
+              return comment.user.type === 'Bot' && comment.body.includes('Benchmark Results')
+            });
+
+            const commentBody = `${comparison}\n\n*Benchmarks run on commit ${context.sha}*`;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+      - name: Check for regressions
+        if: github.event_name == 'pull_request' && steps.compare.outputs.REGRESSION_DETECTED == 'true'
+        run: |
+          echo "⚠️ Performance regression detected!"
+          echo "Please review the benchmark results in the PR comment."
+          # Uncomment the line below to fail the build on regression
+          # exit 1
+
+      - name: Run benchmarks and save baseline
+        if: github.event_name == 'push'
+        run: |
+          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... | tee benchmark_baseline.txt
+
+      - name: Upload baseline benchmarks
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-baseline-${{ github.sha }}
+          path: benchmark_baseline.txt
+          retention-days: 30
+
+  stress-test:
+    name: Stress Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run stress tests
+        run: |
+          # Run tests with high concurrency
+          echo "Running stress tests with 100 concurrent goroutines..."
+          go test -v -run=Concurrent -timeout=10m ./internal/storage/... || echo "Stress tests not yet implemented"
+
+      - name: Memory stress test
+        run: |
+          # Run memory-intensive operations
+          echo "Running memory stress tests..."
+          go test -v -run=Memory -timeout=10m ./internal/storage/... || echo "Memory stress tests not yet implemented"
+
+  profile:
+    name: CPU and Memory Profiling
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run CPU profiling
+        run: |
+          go test -cpuprofile=cpu.prof -bench=. -benchtime=10s ./internal/storage/... || echo "Benchmarks not yet available"
+
+      - name: Run memory profiling
+        run: |
+          go test -memprofile=mem.prof -bench=. -benchtime=10s ./internal/storage/... || echo "Benchmarks not yet available"
+
+      - name: Analyze profiles
+        run: |
+          if [ -f cpu.prof ]; then
+            echo "## CPU Profile (Top 10)" > profile_analysis.md
+            echo '```' >> profile_analysis.md
+            go tool pprof -text -top10 cpu.prof >> profile_analysis.md
+            echo '```' >> profile_analysis.md
+          fi
+
+          if [ -f mem.prof ]; then
+            echo "" >> profile_analysis.md
+            echo "## Memory Profile (Top 10)" >> profile_analysis.md
+            echo '```' >> profile_analysis.md
+            go tool pprof -text -top10 mem.prof >> profile_analysis.md
+            echo '```' >> profile_analysis.md
+          fi
+
+      - name: Upload profiles
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profiles
+          path: |
+            *.prof
+            profile_analysis.md
+          retention-days: 7

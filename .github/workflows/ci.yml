@@ -62,7 +62,12 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
+        run: |
+          set +e
+          go test -v -coverprofile=coverage.out -covermode=atomic ./...
+          TEST_EXIT=$?
+          set -e
+          exit $TEST_EXIT
 
       - name: Upload coverage to Codecov
         if: matrix.go-version == '1.25'

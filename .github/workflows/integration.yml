@@ -28,7 +28,7 @@ jobs:
       - name: Run single node integration tests
         run: |
           if [ -d "test/integration" ]; then
-            go test -v -timeout 10m -tags integration ./test/integration/single_node_test.go
+            go test -v -timeout 10m -tags integration ./test/integration -run "TestSingleNode"
           else
             echo "Integration tests not yet implemented, skipping..."
           fi
@@ -64,17 +64,9 @@ jobs:
       - name: Run cluster integration tests
         run: |
           if [ -d "test/integration" ]; then
-            go test -v -timeout 15m -tags integration ./test/integration/raft_cluster_test.go
+            go test -v -timeout 15m -tags integration ./test/integration -run "Cluster"
           else
             echo "Cluster tests not yet implemented, skipping..."
-          fi
-
-      - name: Run failover tests
-        run: |
-          if [ -d "test/integration" ]; then
-            go test -v -timeout 15m -tags integration ./test/integration/raft_failover_test.go
-          else
-            echo "Failover tests not yet implemented, skipping..."
           fi
 
       - name: Collect logs on failure

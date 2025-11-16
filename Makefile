@@ -54,11 +54,11 @@ test-compaction:
 
 test-integration:
 	@echo "Running integration tests..."
-	$(GO) test -v -timeout=300s ./test/integration
+	$(GO) test -v -timeout=300s -tags integration ./test/integration
 
 test-integration-fast:
 	@echo "Running fast integration tests (single test)..."
-	$(GO) test -v -timeout=60s -run="TestThreeNodeCluster_BasicOperations" ./test/integration
+	$(GO) test -v -timeout=60s -tags integration -run="TestThreeNodeCluster_BasicOperations" ./test/integration
 
 test-coverage:
 	@echo "Running tests with coverage..."

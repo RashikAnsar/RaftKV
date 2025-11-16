@@ -1,0 +1,279 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-binaries:
+    name: Build Release Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          - os: windows
+            arch: amd64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          mkdir -p dist
+          EXT=""
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+
+          # Build kvstore
+          go build -o dist/kvstore${EXT} \
+            -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.GitCommit=$(git rev-parse HEAD)" \
+            ./cmd/kvstore
+
+          # Build kvcli
+          go build -o dist/kvcli${EXT} \
+            -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.GitCommit=$(git rev-parse HEAD)" \
+            ./cmd/kvcli
+
+          # Create archive
+          cd dist
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            zip ../raftkv-${{ steps.version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.zip *
+          else
+            tar czf ../raftkv-${{ steps.version.outputs.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz *
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}-${{ matrix.arch }}
+          path: raftkv-*
+          retention-days: 7
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release, get all commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            # Get commits since last tag
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Save to file
+          echo "$CHANGELOG" > CHANGELOG.txt
+
+          # Also create a release body
+          cat > RELEASE_BODY.md << EOF
+          # RaftKV ${{ steps.version.outputs.VERSION }}
+
+          ## Changes
+
+          $CHANGELOG
+
+          ## Installation
+
+          Download the appropriate binary for your platform from the assets below.
+
+          ### Linux/macOS
+          \`\`\`bash
+          # Extract
+          tar xzf raftkv-${{ steps.version.outputs.VERSION }}-linux-amd64.tar.gz
+
+          # Run
+          ./kvstore --help
+          \`\`\`
+
+          ### Windows
+          \`\`\`powershell
+          # Extract the zip file and run
+          kvstore.exe --help
+          \`\`\`
+
+          ## Docker
+
+          \`\`\`bash
+          docker pull ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+          \`\`\`
+
+          ## What's Changed
+
+          See [CHANGELOG.md](./CHANGELOG.md) for full details.
+          EOF
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} release/ \;
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: RELEASE_BODY.md
+          files: release/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, 'rc') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'alpha') }}
+          generate_release_notes: true
+
+  docker-release:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./deployments/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  update-changelog:
+    name: Update CHANGELOG
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG.md
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "All notable changes to this project will be documented in this file." >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+
+          # Get the previous tag
+          PREV_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
+
+          # Create temporary file with new entry
+          cat > TEMP_CHANGELOG.md << EOF
+          # Changelog
+
+          ## [${{ steps.version.outputs.VERSION }}] - $(date +%Y-%m-%d)
+
+          ### Added
+          - New features and enhancements
+
+          ### Changed
+          - Updates to existing features
+
+          ### Fixed
+          - Bug fixes
+
+          ### Commits
+          EOF
+
+          if [ -z "$PREV_TAG" ]; then
+            git log --pretty=format:"- %s (%h)" --no-merges >> TEMP_CHANGELOG.md
+          else
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges >> TEMP_CHANGELOG.md
+          fi
+
+          echo "" >> TEMP_CHANGELOG.md
+          echo "" >> TEMP_CHANGELOG.md
+
+          # Append old changelog
+          tail -n +3 CHANGELOG.md >> TEMP_CHANGELOG.md
+
+          # Replace old changelog
+          mv TEMP_CHANGELOG.md CHANGELOG.md
+
+      - name: Commit changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add CHANGELOG.md
+          git diff --staged --quiet || git commit -m "chore: update CHANGELOG for ${{ steps.version.outputs.VERSION }}"
+          git push origin HEAD:main || echo "No changes to push"

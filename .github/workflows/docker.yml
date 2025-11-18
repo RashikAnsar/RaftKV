@@ -96,7 +96,7 @@ jobs:
       - name: Build images for compose
         run: |
           if [ -f "deployments/docker/docker-compose.yml" ]; then
-            docker-compose -f deployments/docker/docker-compose.yml build
+            docker compose -f deployments/docker/docker-compose.yml build
           else
             echo "Docker compose file not found, skipping..."
           fi
@@ -104,10 +104,10 @@ jobs:
       - name: Start cluster
         run: |
           if [ -f "deployments/docker/docker-compose.yml" ]; then
-            docker-compose -f deployments/docker/docker-compose.yml up -d
+            docker compose -f deployments/docker/docker-compose.yml up -d
             echo "Waiting for cluster to start..."
             sleep 20
-            docker-compose -f deployments/docker/docker-compose.yml ps
+            docker compose -f deployments/docker/docker-compose.yml ps
           else
             echo "Docker compose file not found, skipping..."
           fi
@@ -128,6 +128,6 @@ jobs:
         if: always()
         run: |
           if [ -f "deployments/docker/docker-compose.yml" ]; then
-            docker-compose -f deployments/docker/docker-compose.yml down -v
-            docker-compose -f deployments/docker/docker-compose.yml logs
+            docker compose -f deployments/docker/docker-compose.yml down -v
+            docker compose -f deployments/docker/docker-compose.yml logs
           fi

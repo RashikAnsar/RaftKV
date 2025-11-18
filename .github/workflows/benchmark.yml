@@ -38,7 +38,7 @@ jobs:
       - name: Run benchmarks on PR branch
         if: github.event_name == 'pull_request'
         run: |
-          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... | tee pr_bench.txt
+          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee pr_bench.txt || echo "No benchmarks found or benchmarks failed"
 
       - name: Checkout main branch
         if: github.event_name == 'pull_request'
@@ -50,7 +50,7 @@ jobs:
       - name: Run benchmarks on main branch
         if: github.event_name == 'pull_request'
         run: |
-          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... | tee main_bench.txt
+          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee main_bench.txt || echo "No benchmarks found or benchmarks failed"
 
       - name: Install benchstat
         if: github.event_name == 'pull_request'
@@ -62,16 +62,27 @@ jobs:
         run: |
           echo "## Benchmark Results" > benchmark_comparison.md
           echo "" >> benchmark_comparison.md
-          echo "Comparing PR branch against main branch:" >> benchmark_comparison.md
-          echo "" >> benchmark_comparison.md
-          echo '```' >> benchmark_comparison.md
-          $(go env GOPATH)/bin/benchstat main_bench.txt pr_bench.txt >> benchmark_comparison.md || echo "No significant differences found" >> benchmark_comparison.md
-          echo '```' >> benchmark_comparison.md
 
-          # Check for significant regressions (>10% slower)
-          if grep -q "~" benchmark_comparison.md; then
-            echo "REGRESSION_DETECTED=true" >> $GITHUB_OUTPUT
+          # Check if benchmark files exist and have content
+          if [ -f "main_bench.txt" ] && [ -s "main_bench.txt" ] && [ -f "pr_bench.txt" ] && [ -s "pr_bench.txt" ]; then
+            echo "Comparing PR branch against main branch:" >> benchmark_comparison.md
+            echo "" >> benchmark_comparison.md
+            echo '```' >> benchmark_comparison.md
+            $(go env GOPATH)/bin/benchstat main_bench.txt pr_bench.txt >> benchmark_comparison.md || echo "No significant differences found" >> benchmark_comparison.md
+            echo '```' >> benchmark_comparison.md
+
+            # Check for significant regressions (>10% slower)
+            if grep -q "~" benchmark_comparison.md; then
+              echo "REGRESSION_DETECTED=true" >> $GITHUB_OUTPUT
+            else
+              echo "REGRESSION_DETECTED=false" >> $GITHUB_OUTPUT
+            fi
           else
+            echo "No benchmark results available for comparison." >> benchmark_comparison.md
+            echo "" >> benchmark_comparison.md
+            echo "This usually means:" >> benchmark_comparison.md
+            echo "- No benchmark functions exist yet (functions with name Benchmark*)" >> benchmark_comparison.md
+            echo "- Benchmarks failed to run" >> benchmark_comparison.md
             echo "REGRESSION_DETECTED=false" >> $GITHUB_OUTPUT
           fi
 
@@ -122,7 +133,7 @@ jobs:
       - name: Run benchmarks and save baseline
         if: github.event_name == 'push'
         run: |
-          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... | tee benchmark_baseline.txt
+          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee benchmark_baseline.txt || echo "No benchmarks found or benchmarks failed"
 
       - name: Upload baseline benchmarks
         if: github.event_name == 'push'

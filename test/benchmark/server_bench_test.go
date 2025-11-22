@@ -21,14 +21,14 @@ func BenchmarkHTTPServer_Sequential(b *testing.B) {
 	store := storage.NewMemoryStore()
 	defer store.Close()
 
-	logger, _ := observability.NewLogger("error") // Quiet logging for benchmarks
+	// logger, _ := observability.NewLogger("error") // Quiet logging for benchmarks
 	// Pass nil for metrics to avoid duplicate registration issues in benchmarks
 	var metrics *observability.Metrics
 
 	srv := server.NewHTTPServer(server.HTTPServerConfig{
 		Addr:           ":8080",
 		Store:          store,
-		Logger:         logger,
+		Logger:         nil, // Disable logging for benchmarks
 		Metrics:        metrics,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
@@ -110,13 +110,13 @@ func BenchmarkHTTPServer_Concurrent(b *testing.B) {
 	store := storage.NewMemoryStore()
 	defer store.Close()
 
-	logger, _ := observability.NewLogger("error")
+	// logger, _ := observability.NewLogger("error")
 	var metrics *observability.Metrics
 
 	srv := server.NewHTTPServer(server.HTTPServerConfig{
 		Addr:           ":8080",
 		Store:          store,
-		Logger:         logger,
+		Logger:         nil, // Disable logging for benchmarks
 		Metrics:        metrics,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
@@ -182,7 +182,7 @@ func BenchmarkHTTPServer_Concurrent(b *testing.B) {
 
 // BenchmarkCachedVsUncached compares cached vs uncached read performance
 func BenchmarkCachedVsUncached(b *testing.B) {
-	logger, _ := observability.NewLogger("error")
+	// logger, _ := observability.NewLogger("error")
 	var metrics *observability.Metrics
 
 	// Populate data
@@ -202,7 +202,7 @@ func BenchmarkCachedVsUncached(b *testing.B) {
 		srv := server.NewHTTPServer(server.HTTPServerConfig{
 			Addr:           ":8080",
 			Store:          baseStore,
-			Logger:         logger,
+			Logger:         nil, // Disable logging for benchmarks
 			Metrics:        metrics,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,
@@ -239,7 +239,7 @@ func BenchmarkCachedVsUncached(b *testing.B) {
 		srv := server.NewHTTPServer(server.HTTPServerConfig{
 			Addr:           ":8080",
 			Store:          cachedStore,
-			Logger:         logger,
+			Logger:         nil, // Disable logging for benchmarks
 			Metrics:        metrics,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,

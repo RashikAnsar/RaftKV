@@ -38,6 +38,7 @@ jobs:
       - name: Run benchmarks on PR branch
         if: github.event_name == 'pull_request'
         run: |
+          set -o pipefail
           go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee pr_bench.txt || echo "No benchmarks found or benchmarks failed"
 
       - name: Checkout main branch
@@ -50,6 +51,7 @@ jobs:
       - name: Run benchmarks on main branch
         if: github.event_name == 'pull_request'
         run: |
+          set -o pipefail
           go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee main_bench.txt || echo "No benchmarks found or benchmarks failed"
 
       - name: Install benchstat
@@ -133,6 +135,7 @@ jobs:
       - name: Run benchmarks and save baseline
         if: github.event_name == 'push'
         run: |
+          set -o pipefail
           go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee benchmark_baseline.txt || echo "No benchmarks found or benchmarks failed"
 
       - name: Upload baseline benchmarks

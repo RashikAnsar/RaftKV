@@ -70,11 +70,15 @@ jobs:
             VERSION=${{ github.sha }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
 
+      - name: Lowercase Repository Name
+        run: |
+          echo "LOWERCASE_REPO=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Run Trivy vulnerability scanner
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          image-ref: ghcr.io/${{ env.LOWERCASE_REPO }}:${{ github.sha }}
           format: 'sarif'
           output: 'trivy-results.sarif'
 

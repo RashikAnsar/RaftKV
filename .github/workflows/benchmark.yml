@@ -33,7 +33,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: true
+          cache: false
 
       - name: Run benchmarks on PR branch
         if: github.event_name == 'pull_request'
@@ -158,7 +158,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: true
+          cache: false
 
       - name: Run stress tests
         run: |
@@ -184,7 +184,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: true
+          cache: false
 
       - name: Run CPU profiling
         run: |

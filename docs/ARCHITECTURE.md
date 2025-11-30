@@ -1639,7 +1639,7 @@ RaftKV uses **two snapshot formats** for different purposes:
 - [x] Performance optimizations (batching, caching, compaction)
 - [x] Monitoring infrastructure (Prometheus + Grafana)
 - [x] Configuration management (multi-source)
-- 🚧 Complete documentation
+- [x] Complete documentation
 
 ### v1.1 (Future)
 

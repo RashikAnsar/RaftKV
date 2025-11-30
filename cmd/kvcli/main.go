@@ -29,10 +29,24 @@ var (
 	timeout    = flag.Duration("timeout", 10*time.Second, "Request timeout")
 	jsonOutput = flag.Bool("json", false, "Output in JSON format")
 	noColor    = flag.Bool("no-color", false, "Disable colored output")
+	version    = flag.Bool("version", false, "Print version information")
+)
+
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
 )
 
 func main() {
 	flag.Parse()
+
+	if *version {
+		fmt.Printf("RaftKV CLI %s\n", Version)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+		os.Exit(0)
+	}
 
 	if flag.NArg() < 1 {
 		printUsage()

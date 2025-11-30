@@ -20,6 +20,12 @@ import (
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
+	GitCommit = "unknown"
+)
+
 func main() {
 	// Setup flags
 	fs := flag.NewFlagSet("kvstore", flag.ExitOnError)
@@ -52,7 +58,9 @@ func main() {
 	observability.SetGlobalLogger(logger)
 
 	logger.Info("Starting RaftKV",
-		zap.String("version", "1.0.0"),
+		zap.String("version", Version),
+		zap.String("build_time", BuildTime),
+		zap.String("git_commit", GitCommit),
 		zap.String("http_addr", cfg.Server.HTTPAddr),
 		zap.String("grpc_addr", cfg.Server.GRPCAddr),
 		zap.Bool("grpc_enabled", cfg.Server.EnableGRPC),

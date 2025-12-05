@@ -1,0 +1,61 @@
+# RaftKV Backup Configuration Example
+# Copy this file and customize for your environment
+
+provider:
+  # Provider type: local, s3, gcs, azure, minio
+  type: local
+
+  # Local filesystem configuration (for development/testing)
+  local_path: /var/lib/raftkv/backups
+
+  # S3 configuration (uncomment to use AWS S3)
+  # s3_bucket: my-raftkv-backups
+  # s3_region: us-east-1
+  # s3_endpoint: ""  # Optional: for S3-compatible storage
+  # s3_access_key: ""  # Optional: use IAM roles if possible
+  # s3_secret_key: ""
+
+  # GCS configuration (uncomment to use Google Cloud Storage)
+  # gcs_bucket: my-raftkv-backups
+  # gcs_project: my-gcp-project
+  # gcs_creds_file: /path/to/service-account.json
+
+  # Azure configuration (uncomment to use Azure Blob Storage)
+  # azure_container: my-raftkv-backups
+  # azure_account: mystorageaccount
+  # azure_key: ""
+
+backup:
+  # Compression settings
+  compression:
+    enabled: true
+    type: gzip    # gzip or none
+    level: 6      # 1-9 for gzip (1=fastest, 9=best compression)
+
+  # Encryption settings
+  encryption:
+    enabled: false
+    type: aes-256-gcm
+    key_file: /etc/raftkv/backup-key  # 32-byte encryption key
+
+  # Cluster identification
+  node_id: node-1
+  cluster_id: raftkv-prod
+  version: 1.0.0
+
+  # Storage prefix for backups
+  prefix: backups/
+
+# Backup schedule (optional)
+schedule:
+  enabled: false
+  cron_expression: "0 0 * * *"  # Daily at midnight
+  timezone: UTC
+  enable_pruning: true
+
+# Retention policy
+retention:
+  retention_days: 30  # Keep backups for 30 days
+  max_backups: 10     # Keep at most 10 backups
+  min_backups: 3      # Always keep at least 3 backups
+  prune_on_backup: true

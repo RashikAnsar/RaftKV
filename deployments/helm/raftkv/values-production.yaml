@@ -1,0 +1,212 @@
+# Production values for raftkv
+# Override the default values for production deployments
+
+# Use 5 replicas for production (better fault tolerance)
+replicaCount: 5
+
+# Image configuration for production
+image:
+  repository: your-registry.io/raftkv  # Update with your registry
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"  # Use specific version tag, not latest
+
+# Image pull secrets for private registry
+imagePullSecrets:
+  - name: raftkv-registry-secret
+
+# Service configuration
+service:
+  type: LoadBalancer
+  httpPort: 8080
+  grpcPort: 9090
+  annotations:
+    # Add cloud provider specific annotations
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  # For AWS, specify subnets
+  # service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-xxxxx,subnet-yyyyy"
+
+# Ingress for production (optional)
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+  hosts:
+    - host: raftkv.yourdomain.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: raftkv-tls
+      hosts:
+        - raftkv.yourdomain.com
+
+# Production resource limits
+resources:
+  requests:
+    cpu: 2000m       # 2 CPU cores
+    memory: 4Gi      # 4 GB RAM
+  limits:
+    cpu: 4000m       # 4 CPU cores
+    memory: 8Gi      # 8 GB RAM
+
+# Production storage configuration
+persistence:
+  enabled: true
+  storageClass: "fast-ssd"  # Use fast SSD storage class
+  accessMode: ReadWriteOnce
+  size: 100Gi  # Larger storage for production
+  annotations:
+    # Add backup annotations if needed
+    backup.velero.io/backup-volumes: "data"
+
+# REQUIRED pod anti-affinity for production (ensures pods on different nodes)
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:  # REQUIRED, not preferred
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: raftkv
+        topologyKey: kubernetes.io/hostname
+    # Optional: prefer different availability zones
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: raftkv
+          topologyKey: topology.kubernetes.io/zone
+
+# Node selector for production nodes
+nodeSelector:
+  workload: database
+  # node.kubernetes.io/instance-type: "m5.2xlarge"
+
+# Tolerations for dedicated nodes
+tolerations:
+  - key: "workload"
+    operator: "Equal"
+    value: "database"
+    effect: "NoSchedule"
+
+# Liveness probe - more lenient for production
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 60  # Longer startup time in production
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 5      # More tolerant
+
+# Readiness probe
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# RaftKV production configuration
+raftkv:
+  raft:
+    enabled: true
+    # Production Raft settings (optional, uncomment if needed)
+    # heartbeatTimeout: 1s
+    # electionTimeout: 2s
+    # snapshotInterval: 300s  # More frequent snapshots
+    # snapshotThreshold: 16384
+
+  storage:
+    dataDir: /var/lib/raftkv
+    wal:
+      enabled: true
+      syncWrites: true  # Enable sync writes for durability
+      batchSize: 100
+      batchTimeout: 10ms
+    cache:
+      enabled: true
+      maxSize: 100000  # Larger cache for production
+
+  auth:
+    enabled: true
+    # IMPORTANT: Generate a strong JWT secret
+    # jwtSecret: "your-strong-random-secret-here"  # Use sealed secrets or external secret management
+    adminPassword: ""  # Set via sealed secrets or Vault
+    tokenExpiry: 12h  # Shorter token expiry for production
+
+  server:
+    httpAddr: :8080
+    grpcAddr: :9090
+    readTimeout: 60s
+    writeTimeout: 60s
+    maxHeaderBytes: 1048576
+
+  observability:
+    logging:
+      level: info  # Use 'info' for production, 'debug' only when troubleshooting
+      format: json
+    metrics:
+      enabled: true
+      port: 2112
+
+  tls:
+    enabled: true  # Enable TLS in production
+    certFile: /etc/raftkv/tls/server-cert.pem
+    keyFile: /etc/raftkv/tls/server-key.pem
+    caFile: /etc/raftkv/tls/ca-cert.pem
+    secretName: raftkv-tls
+
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  additionalLabels:
+    release: prometheus  # Match your Prometheus Operator release label
+
+# Pod Disruption Budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 3  # Keep at least 3 pods running (quorum)
+
+# Rolling update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0  # Update all pods
+
+# Security context
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Additional production configurations
+# Use external secret management (e.g., Sealed Secrets, Vault)
+# Uncomment and configure based on your setup:
+# extraEnv:
+#   - name: RAFTKV_AUTH__JWT_SECRET
+#     valueFrom:
+#       secretKeyRef:
+#         name: raftkv-vault-secret
+#         key: jwt-secret

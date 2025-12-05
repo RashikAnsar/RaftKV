@@ -190,7 +190,21 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 		}
 
 		// Create HTTP client with TLS support if configured
-		httpClient := &http.Client{}
+		httpClient := &http.Client{
+			Timeout: 10 * time.Second,
+			// Allow automatic redirect following for leader redirects
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// Allow up to 3 redirects (sufficient for leader redirects)
+				if len(via) >= 3 {
+					return fmt.Errorf("too many redirects")
+				}
+				// Copy the Content-Type header for POST redirects
+				if req.Method == "POST" {
+					req.Header.Set("Content-Type", "application/json")
+				}
+				return nil
+			},
+		}
 		if config.TLSConfig != nil {
 			tlsConfig, err := security.LoadClientTLSConfig(config.TLSConfig)
 			if err != nil {

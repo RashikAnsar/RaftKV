@@ -1,0 +1,51 @@
+apiVersion: v2
+name: raftkv
+description: A distributed key-value store with Raft consensus
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - database
+  - key-value
+  - raft
+  - distributed
+  - consensus
+
+home: https://github.com/RashikAnsar/raftkv
+sources:
+  - https://github.com/RashikAnsar/raftkv
+
+maintainers:
+  - name: Rashik Ansar
+    url: https://github.com/RashikAnsar
+
+# Dependencies (none for now)
+# dependencies: []
+
+# Icon URL (optional, add when available)
+# icon: https://example.com/raftkv-icon.png
+
+# Kubeversion specifies the minimum Kubernetes version
+kubeVersion: ">=1.24.0-0"
+
+# Annotations for Artifact Hub
+annotations:
+  # Category for Artifact Hub
+  category: Database
+  # License
+  licenses: Apache-2.0
+  # Links
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/RashikAnsar/raftkv/blob/main/README.md
+    - name: Architecture
+      url: https://github.com/RashikAnsar/raftkv/blob/main/docs/ARCHITECTURE.md
+  # Changes
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial Helm chart release
+  # Operator capabilities
+  artifacthub.io/operator: "false"
+  # Prerelease status
+  artifacthub.io/prerelease: "false"

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: raftkv-headless
+  namespace: raftkv
+  labels:
+    app: raftkv
+spec:
+  clusterIP: None  # Headless service
+  publishNotReadyAddresses: true  # Important for Raft peer discovery
+  selector:
+    app: raftkv
+  ports:
+    - name: raft
+      port: 7000
+      targetPort: 7000
+      protocol: TCP
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+    - name: metrics
+      port: 2112
+      targetPort: 2112
+      protocol: TCP

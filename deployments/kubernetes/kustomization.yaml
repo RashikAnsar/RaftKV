@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: raftkv
+
+# Common labels applied to all resources
+labels:
+  - pairs:
+      app: raftkv
+      version: v1.0.0
+      managed-by: kustomize
+
+# Resources to deploy
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - secret.yaml
+  - service-headless.yaml
+  - service-lb.yaml
+  - statefulset.yaml
+
+# Images (update with your registry)
+images:
+  - name: raftkv
+    newName: raftkv
+    newTag: latest
+
+# ConfigMap generator (optional - can be used instead of configmap.yaml)
+# configMapGenerator:
+#   - name: raftkv-config
+#     files:
+#       - config.yaml
+
+# Secret generator (optional - for production, use sealed secrets or external secrets)
+# secretGenerator:
+#   - name: raftkv-secret
+#     literals:
+#       - jwt-secret=your-secret-here
+
+# Patches for environment-specific customization
+# patchesStrategicMerge:
+#   - production-patch.yaml
+
+# Replace variables in manifests
+# replacements:
+#   - source:
+#       kind: ConfigMap
+#       name: raftkv-config
+#     targets:
+#       - select:
+#           kind: StatefulSet
+#         fieldPaths:
+#           - spec.template.spec.volumes.[name=config].configMap.name

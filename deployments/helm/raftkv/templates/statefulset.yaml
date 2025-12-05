@@ -1,0 +1,317 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "raftkv.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "raftkv.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "raftkv.headlessServiceName" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "raftkv.selectorLabels" . | nindent 6 }}
+
+  # Update strategy
+  updateStrategy:
+    {{- toYaml .Values.updateStrategy | nindent 4 }}
+
+  # Pod management policy
+  podManagementPolicy: Parallel  # Start pods in parallel for faster initialization
+
+  template:
+    metadata:
+      labels:
+        {{- include "raftkv.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "raftkv.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      # Pod anti-affinity
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      # Init container for setup
+      {{- if .Values.initContainers.enabled }}
+      initContainers:
+        - name: init-raftkv
+          image: {{ include "raftkv.initImage" . }}
+          command:
+            - sh
+            - -c
+            - |
+              echo "Pod name: $POD_NAME"
+              echo "Pod ordinal: ${POD_NAME##*-}"
+
+              # Create necessary directories
+              mkdir -p {{ .Values.raftkv.storage.dataDir }}/raft
+              mkdir -p {{ .Values.raftkv.storage.dataDir }}/snapshots
+
+              # Set ownership to raftkv user (UID 1000, GID 1000)
+              chown -R {{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }} {{ .Values.raftkv.storage.dataDir }}
+
+              # Set permissions
+              chmod 755 {{ .Values.raftkv.storage.dataDir }}
+              chmod 755 {{ .Values.raftkv.storage.dataDir }}/raft
+              chmod 755 {{ .Values.raftkv.storage.dataDir }}/snapshots
+
+              echo "Initialization complete"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.raftkv.storage.dataDir }}
+      {{- end }}
+
+      containers:
+        - name: raftkv
+          image: {{ include "raftkv.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+              protocol: TCP
+            - name: raft
+              containerPort: {{ .Values.service.headless.raftPort }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.headless.metricsPort }}
+              protocol: TCP
+
+          env:
+            # Pod metadata
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
+            # Raft configuration
+            - name: RAFTKV_RAFT__ENABLED
+              value: {{ .Values.raftkv.raft.enabled | quote }}
+            - name: RAFTKV_RAFT__NODE_ID
+              value: "$(POD_NAME)"
+            - name: RAFTKV_RAFT__RAFT_ADDR
+              value: {{ include "raftkv.raftAddr" . | quote }}
+            - name: RAFTKV_RAFT__DATA_DIR
+              value: "{{ .Values.raftkv.storage.dataDir }}/raft"
+
+            # Bootstrap only for pod-0
+            - name: RAFTKV_RAFT__BOOTSTRAP
+              value: "false"  # Overridden by command for pod-0
+
+            # Join address for non-bootstrap nodes
+            - name: RAFTKV_RAFT__JOIN_ADDR
+              value: {{ include "raftkv.joinAddr" . | quote }}
+
+            # Storage configuration
+            - name: RAFTKV_STORAGE__DATA_DIR
+              value: {{ .Values.raftkv.storage.dataDir | quote }}
+            - name: RAFTKV_STORAGE__WAL__ENABLED
+              value: {{ .Values.raftkv.storage.wal.enabled | quote }}
+            - name: RAFTKV_STORAGE__WAL__SYNC_WRITES
+              value: {{ .Values.raftkv.storage.wal.syncWrites | quote }}
+            - name: RAFTKV_STORAGE__WAL__BATCH_SIZE
+              value: {{ .Values.raftkv.storage.wal.batchSize | quote }}
+            - name: RAFTKV_STORAGE__WAL__BATCH_TIMEOUT
+              value: {{ .Values.raftkv.storage.wal.batchTimeout | quote }}
+            - name: RAFTKV_STORAGE__CACHE__ENABLED
+              value: {{ .Values.raftkv.storage.cache.enabled | quote }}
+            - name: RAFTKV_STORAGE__CACHE__MAX_SIZE
+              value: {{ .Values.raftkv.storage.cache.maxSize | quote }}
+
+            # Auth configuration
+            - name: RAFTKV_AUTH__ENABLED
+              value: {{ .Values.raftkv.auth.enabled | quote }}
+            {{- if .Values.raftkv.auth.enabled }}
+            - name: RAFTKV_AUTH__JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "raftkv.fullname" . }}-secret
+                  key: jwt-secret
+            - name: RAFTKV_AUTH__TOKEN_EXPIRY
+              value: {{ .Values.raftkv.auth.tokenExpiry | quote }}
+            {{- end }}
+
+            # Server configuration
+            - name: RAFTKV_SERVER__HTTP_ADDR
+              value: {{ .Values.raftkv.server.httpAddr | quote }}
+            - name: RAFTKV_SERVER__GRPC_ADDR
+              value: {{ .Values.raftkv.server.grpcAddr | quote }}
+
+            # Observability
+            - name: RAFTKV_OBSERVABILITY__LOGGING__LEVEL
+              value: {{ .Values.raftkv.observability.logging.level | quote }}
+            - name: RAFTKV_OBSERVABILITY__LOGGING__FORMAT
+              value: {{ .Values.raftkv.observability.logging.format | quote }}
+            - name: RAFTKV_OBSERVABILITY__METRICS__ENABLED
+              value: {{ .Values.raftkv.observability.metrics.enabled | quote }}
+            - name: RAFTKV_OBSERVABILITY__METRICS__PORT
+              value: {{ .Values.raftkv.observability.metrics.port | quote }}
+
+            # TLS configuration
+            {{- if .Values.raftkv.tls.enabled }}
+            - name: RAFTKV_SECURITY__TLS__ENABLED
+              value: "true"
+            - name: RAFTKV_SECURITY__TLS__CERT_FILE
+              value: {{ .Values.raftkv.tls.certFile | quote }}
+            - name: RAFTKV_SECURITY__TLS__KEY_FILE
+              value: {{ .Values.raftkv.tls.keyFile | quote }}
+            - name: RAFTKV_SECURITY__TLS__CA_FILE
+              value: {{ .Values.raftkv.tls.caFile | quote }}
+            {{- end }}
+
+            # Additional environment variables
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          # Command to handle bootstrap logic
+          command:
+            - sh
+            - -c
+            - |
+              # Extract pod ordinal
+              ORDINAL=${HOSTNAME##*-}
+
+              # Bootstrap only pod-0
+              if [ "$ORDINAL" = "0" ]; then
+                echo "This is {{ include "raftkv.fullname" . }}-0, enabling bootstrap mode"
+                export RAFTKV_RAFT__BOOTSTRAP=true
+                export RAFTKV_RAFT__JOIN_ADDR=""
+              else
+                echo "This is {{ include "raftkv.fullname" . }}-$ORDINAL, will join existing cluster"
+                export RAFTKV_RAFT__BOOTSTRAP=false
+              fi
+
+              # Start raftkv
+              exec /usr/local/bin/kvstore {{- if .Values.configMap.data }} --config=/etc/raftkv/config.yaml{{- end }}
+
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.raftkv.storage.dataDir }}
+            {{- if .Values.configMap.data }}
+            - name: config
+              mountPath: /etc/raftkv
+              readOnly: true
+            {{- end }}
+            {{- if .Values.raftkv.tls.enabled }}
+            - name: tls
+              mountPath: /etc/raftkv/tls
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          # Liveness probe
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.livenessProbe.httpGet.path }}
+              port: {{ .Values.livenessProbe.httpGet.port }}
+              {{- if .Values.raftkv.tls.enabled }}
+              scheme: HTTPS
+              {{- else }}
+              scheme: HTTP
+              {{- end }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          {{- end }}
+
+          # Readiness probe
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.readinessProbe.httpGet.path }}
+              port: {{ .Values.readinessProbe.httpGet.port }}
+              {{- if .Values.raftkv.tls.enabled }}
+              scheme: HTTPS
+              {{- else }}
+              scheme: HTTP
+              {{- end }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
+            failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+          {{- end }}
+
+          # Resource limits
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+      volumes:
+        {{- if .Values.configMap.data }}
+        - name: config
+          configMap:
+            name: {{ include "raftkv.fullname" . }}-config
+        {{- end }}
+        {{- if .Values.raftkv.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.raftkv.tls.secretName }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+
+  # Volume claim templates for persistent storage
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        {{- with .Values.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          - {{ .Values.persistence.accessMode }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

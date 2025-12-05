@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test
+.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test k8s-build k8s-load k8s-install k8s-install-prod k8s-uninstall k8s-upgrade k8s-restart k8s-status k8s-logs k8s-shell k8s-port-forward k8s-clean k8s-deploy k8s-redeploy test-kubernetes-deployment test-kubernetes-deployment-quick
 
 # Variables
 BINARY_NAME=kvstore
@@ -553,3 +553,111 @@ help:
 	@echo "  # Use CLI with cluster"
 	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 put key value"
 	@echo "  ./bin/kvcli --protocol=grpc --server=localhost:8081 get key"
+
+##############################################################################
+# Kubernetes Operations
+##############################################################################
+k8s-build: ## Build Docker image for Kubernetes
+	@echo "Building Docker image..."
+	@make docker-build
+
+k8s-load: ## Load Docker image to Minikube
+	@echo "Loading image to Minikube..."
+	@minikube image load raftkv:latest
+	@echo "Image loaded successfully"
+
+k8s-install: ## Install RaftKV using Helm (development mode)
+	@echo "Installing RaftKV with Helm..."
+	@helm install raftkv ./deployments/helm/raftkv -n raftkv --create-namespace \
+		-f ./deployments/helm/raftkv/values-development.yaml
+	@echo "Waiting for pods to be ready..."
+	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=raftkv -n raftkv --timeout=120s || true
+	@echo "Installation complete!"
+	@make k8s-status
+
+k8s-install-prod: ## Install RaftKV using Helm (production mode)
+	@echo "Installing RaftKV with Helm (production mode)..."
+	@helm install raftkv ./deployments/helm/raftkv -n raftkv --create-namespace \
+		-f ./deployments/helm/raftkv/values-production.yaml
+	@echo "Waiting for pods to be ready..."
+	@kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=raftkv -n raftkv --timeout=300s || true
+	@echo "Installation complete!"
+	@make k8s-status
+
+k8s-uninstall: ## Uninstall RaftKV Helm release
+	@echo "Uninstalling RaftKV..."
+	@helm uninstall raftkv -n raftkv || echo "Release not found"
+	@echo "Uninstall complete"
+
+k8s-upgrade: k8s-build k8s-load ## Upgrade RaftKV (rebuild image and upgrade Helm release)
+	@echo "Upgrading RaftKV..."
+	@helm upgrade raftkv ./deployments/helm/raftkv -n raftkv \
+		-f ./deployments/helm/raftkv/values-development.yaml
+	@echo "Upgrade initiated. Waiting for rollout..."
+	@kubectl rollout status statefulset/raftkv -n raftkv --timeout=120s || true
+	@make k8s-status
+
+k8s-restart: ## Restart all RaftKV pods
+	@echo "Restarting RaftKV pods..."
+	@kubectl rollout restart statefulset/raftkv -n raftkv
+	@echo "Restart initiated. Waiting for rollout..."
+	@kubectl rollout status statefulset/raftkv -n raftkv --timeout=120s || true
+	@make k8s-status
+
+k8s-status: ## Show RaftKV cluster status
+	@echo "================================"
+	@echo "RaftKV Cluster Status"
+	@echo "================================"
+	@echo ""
+	@echo "Pods:"
+	@kubectl get pods -n raftkv -l app.kubernetes.io/name=raftkv || echo "No pods found"
+	@echo ""
+	@echo "Services:"
+	@kubectl get svc -n raftkv || echo "No services found"
+	@echo ""
+	@echo "PVCs:"
+	@kubectl get pvc -n raftkv || echo "No PVCs found"
+
+k8s-logs: ## Show logs from raftkv-0
+	@kubectl logs -n raftkv raftkv-0 --tail=50 -f
+
+k8s-shell: ## Open shell in raftkv-0
+	@kubectl exec -it -n raftkv raftkv-0 -- sh
+
+k8s-port-forward: ## Port-forward to access RaftKV locally
+	@echo "Port-forwarding raftkv service to localhost:8080..."
+	@echo "Access RaftKV at: http://localhost:8080"
+	@echo "Press Ctrl+C to stop"
+	@kubectl port-forward -n raftkv svc/raftkv 8080:8080
+
+k8s-clean: k8s-uninstall ## Clean up everything (uninstall + delete PVCs + delete namespace)
+	@echo "Deleting PVCs..."
+	@kubectl delete pvc -n raftkv --all || echo "No PVCs to delete"
+	@echo "Deleting namespace..."
+	@kubectl delete namespace raftkv || echo "Namespace not found"
+	@echo "Cleanup complete"
+
+k8s-deploy: k8s-build k8s-load k8s-install ## Full deployment (build + load + install)
+	@echo "================================"
+	@echo "RaftKV deployed successfully!"
+	@echo "================================"
+	@echo ""
+	@echo "To access RaftKV, run:"
+	@echo "  make k8s-port-forward"
+	@echo ""
+	@echo "To view logs, run:"
+	@echo "  make k8s-logs"
+
+k8s-redeploy: k8s-clean k8s-deploy ## Clean everything and redeploy from scratch
+	@echo "Redeployment complete!"
+
+test-kubernetes-deployment: ## Run K8s deployment tests
+	@echo "Running Kubernetes deployment test suite..."
+	@chmod +x ./test/kubernetes_deployment_tests.sh
+	@./test/kubernetes_deployment_tests.sh
+
+test-kubernetes-deployment-quick: ## Run K8s deployment tests in non-interactive mode (faster)
+	@echo "Running Kubernetes deployment test suite (non-interactive)..."
+	@chmod +x ./test/kubernetes_deployment_tests.sh
+	@INTERACTIVE=false LOAD_TEST_DURATION=5 LOAD_TEST_TARGET=500 LOAD_TEST_CONCURRENCY=25 ./test/kubernetes_deployment_tests.sh
+

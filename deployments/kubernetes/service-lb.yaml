@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: raftkv
+  namespace: raftkv
+  labels:
+    app: raftkv
+  annotations:
+    # For cloud providers, configure load balancer
+    # AWS example:
+    # service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    # service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer  # Change to ClusterIP for internal-only access
+  selector:
+    app: raftkv
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: grpc
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  sessionAffinity: ClientIP  # Maintain session stickiness
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours

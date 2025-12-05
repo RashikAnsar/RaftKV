@@ -1,0 +1,148 @@
+# Development values for raftkv
+# Override the default values for local development and testing
+
+# Use 3 replicas for development
+replicaCount: 3
+
+# Image configuration for development
+image:
+  repository: raftkv
+  pullPolicy: IfNotPresent
+  tag: "latest"  # Use latest for development
+
+# No image pull secrets needed for local development
+imagePullSecrets: []
+
+# Service configuration for development
+service:
+  type: ClusterIP  # Use ClusterIP for local development
+  httpPort: 8080
+  grpcPort: 9090
+  annotations: {}
+
+# No ingress for local development (use port-forward instead)
+ingress:
+  enabled: false
+
+# Minimal resources for development
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+
+# Smaller storage for development
+persistence:
+  enabled: true
+  # storageClass: "standard"  # Use default storage class
+  accessMode: ReadWriteOnce
+  size: 5Gi  # Smaller size for development
+
+# PREFERRED pod anti-affinity for development (works on single-node clusters like Minikube)
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: raftkv
+          topologyKey: kubernetes.io/hostname
+
+# No node selector for development
+nodeSelector: {}
+
+# No tolerations for development
+tolerations: []
+
+# Faster probes for development
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 15  # Shorter for faster feedback
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 3
+  timeoutSeconds: 2
+  failureThreshold: 3
+
+# RaftKV development configuration
+raftkv:
+  raft:
+    enabled: true
+
+  storage:
+    dataDir: /var/lib/raftkv
+    wal:
+      enabled: true
+      syncWrites: false  # Disable sync for faster development
+      batchSize: 100
+      batchTimeout: 10ms
+    cache:
+      enabled: true
+      maxSize: 10000  # Smaller cache
+
+  auth:
+    enabled: true
+    jwtSecret: "dev-secret-change-me"  # Simple secret for development
+    adminPassword: "admin"  # Simple password for development
+    tokenExpiry: 24h
+
+  server:
+    httpAddr: :8080
+    grpcAddr: :9090
+    readTimeout: 30s
+    writeTimeout: 30s
+    maxHeaderBytes: 1048576
+
+  observability:
+    logging:
+      level: debug  # Debug level for development
+      format: json
+    metrics:
+      enabled: true
+      port: 2112
+
+  tls:
+    enabled: false  # Disable TLS for easier development
+
+# No ServiceMonitor for development (unless you have Prometheus running locally)
+serviceMonitor:
+  enabled: false
+
+# No PDB for development
+podDisruptionBudget:
+  enabled: false
+
+# Update strategy for development
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    partition: 0
+
+# Security context (same as production)
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000

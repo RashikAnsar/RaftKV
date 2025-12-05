@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: raftkv-config
+  namespace: raftkv
+  labels:
+    app: raftkv
+data:
+  config.yaml: |
+    server:
+      http_addr: ":8080"
+      grpc_addr: ":9090"
+      read_timeout: "30s"
+      write_timeout: "30s"
+
+    storage:
+      data_dir: "/var/lib/raftkv"
+      sync_on_write: true
+      snapshot_every: 10000
+
+    wal:
+      batch_enabled: true
+      batch_size: 100
+      batch_wait_time: "10ms"
+      compaction_enabled: true
+
+    cache:
+      enabled: true
+      max_size: 10000
+      ttl: "1h"
+
+    raft:
+      enabled: true
+      data_dir: "/var/lib/raftkv/raft"
+      heartbeat_timeout: "1s"
+      election_timeout: "1s"
+      snapshot_threshold: 8192
+
+    auth:
+      enabled: true
+
+    tls:
+      enabled: false
+
+    observability:
+      log_level: "info"
+      log_format: "json"
+      metrics_enabled: true
+      metrics_addr: ":2112"
+
+    performance:
+      max_connections: 1000
+      enable_rate_limit: false

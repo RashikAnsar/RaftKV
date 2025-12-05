@@ -1,0 +1,92 @@
+RaftKV has been deployed successfully!
+
+Release Name: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Chart Version: {{ .Chart.Version }}
+App Version: {{ .Chart.AppVersion }}
+
+1. Check the status of your RaftKV cluster:
+
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "raftkv.name" . }}
+
+2. Wait for all pods to be ready:
+
+   kubectl wait --for=condition=ready pod -l app.kubernetes.io/name={{ include "raftkv.name" . }} -n {{ .Release.Namespace }} --timeout=300s
+
+3. Access RaftKV:
+
+{{- if .Values.ingress.enabled }}
+   RaftKV is available via Ingress:
+   {{- range .Values.ingress.hosts }}
+   - http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+   {{- end }}
+{{- else if eq .Values.service.type "LoadBalancer" }}
+   Get the LoadBalancer IP:
+
+   export SERVICE_IP=$(kubectl get svc {{ include "raftkv.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+   echo "RaftKV HTTP API: http://$SERVICE_IP:{{ .Values.service.httpPort }}"
+   echo "RaftKV gRPC API: $SERVICE_IP:{{ .Values.service.grpcPort }}"
+
+   Check cluster status:
+   curl http://$SERVICE_IP:{{ .Values.service.httpPort }}/cluster/nodes
+{{- else if eq .Values.service.type "NodePort" }}
+   Get the NodePort:
+
+   export NODE_PORT=$(kubectl get svc {{ include "raftkv.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
+   export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+   echo "RaftKV HTTP API: http://$NODE_IP:$NODE_PORT"
+
+   Check cluster status:
+   curl http://$NODE_IP:$NODE_PORT/cluster/nodes
+{{- else }}
+   Port-forward to access RaftKV:
+
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "raftkv.fullname" . }} {{ .Values.service.httpPort }}:{{ .Values.service.httpPort }}
+
+   In another terminal:
+   curl http://localhost:{{ .Values.service.httpPort }}/health
+   curl http://localhost:{{ .Values.service.httpPort }}/cluster/nodes
+{{- end }}
+
+4. View logs from a pod:
+
+   kubectl logs -n {{ .Release.Namespace }} {{ include "raftkv.fullname" . }}-0 -f
+
+5. Check cluster health:
+
+   kubectl exec -n {{ .Release.Namespace }} {{ include "raftkv.fullname" . }}-0 -- wget -q -O- http://localhost:{{ .Values.service.httpPort }}/health
+
+6. View cluster leader:
+
+   kubectl exec -n {{ .Release.Namespace }} {{ include "raftkv.fullname" . }}-0 -- wget -q -O- http://localhost:{{ .Values.service.httpPort }}/cluster/leader
+
+{{- if .Values.serviceMonitor.enabled }}
+
+7. Prometheus ServiceMonitor has been created. Metrics are available at:
+   http://{{ include "raftkv.fullname" . }}-headless.{{ .Release.Namespace }}:{{ .Values.service.headless.metricsPort }}/metrics
+{{- end }}
+
+{{- if .Values.raftkv.auth.enabled }}
+
+Authentication:
+- JWT authentication is enabled
+- Default admin password: {{ .Values.raftkv.auth.adminPassword }} (CHANGE THIS IN PRODUCTION!)
+{{- end }}
+
+Configuration:
+- Replicas: {{ .Values.replicaCount }}
+- Storage: {{ .Values.persistence.size }} per pod
+{{- if .Values.persistence.storageClass }}
+- Storage Class: {{ .Values.persistence.storageClass }}
+{{- end }}
+- Resources: CPU {{ .Values.resources.requests.cpu }} / Memory {{ .Values.resources.requests.memory }}
+
+For more information:
+- Documentation: https://github.com/RashikAnsar/raftkv
+- Architecture: https://github.com/RashikAnsar/raftkv/blob/main/docs/ARCHITECTURE.md
+
+To upgrade or modify the deployment:
+   helm upgrade {{ .Release.Name }} raftkv/raftkv -f custom-values.yaml
+
+To uninstall:
+   helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}

@@ -1,0 +1,34 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "raftkv.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "raftkv.labels" . | nindent 4 }}
+rules:
+  # Allow reading pods for peer discovery
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # Allow reading endpoints for service discovery
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "raftkv.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "raftkv.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "raftkv.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "raftkv.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

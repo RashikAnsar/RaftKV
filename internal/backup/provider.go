@@ -53,25 +53,25 @@ const (
 
 // ProviderConfig contains configuration for creating a storage provider
 type ProviderConfig struct {
-	Type ProviderType
+	Type ProviderType `json:"type" yaml:"type"`
 
 	// S3/MinIO configuration
-	S3Bucket   string
-	S3Region   string
-	S3Endpoint string // Optional, for MinIO or S3-compatible storage
-	S3AccessKey string
-	S3SecretKey string
+	S3Bucket    string `json:"s3_bucket,omitempty" yaml:"s3_bucket,omitempty"`
+	S3Region    string `json:"s3_region,omitempty" yaml:"s3_region,omitempty"`
+	S3Endpoint  string `json:"s3_endpoint,omitempty" yaml:"s3_endpoint,omitempty"` // Optional, for MinIO or S3-compatible storage
+	S3AccessKey string `json:"s3_access_key,omitempty" yaml:"s3_access_key,omitempty"`
+	S3SecretKey string `json:"s3_secret_key,omitempty" yaml:"s3_secret_key,omitempty"`
 
 	// GCS configuration
-	GCSBucket     string
-	GCSProject    string
-	GCSCredsFile  string // Path to service account JSON
+	GCSBucket    string `json:"gcs_bucket,omitempty" yaml:"gcs_bucket,omitempty"`
+	GCSProject   string `json:"gcs_project,omitempty" yaml:"gcs_project,omitempty"`
+	GCSCredsFile string `json:"gcs_creds_file,omitempty" yaml:"gcs_creds_file,omitempty"` // Path to service account JSON
 
 	// Azure configuration
-	AzureContainer string
-	AzureAccount   string
-	AzureKey       string
+	AzureContainer string `json:"azure_container,omitempty" yaml:"azure_container,omitempty"`
+	AzureAccount   string `json:"azure_account,omitempty" yaml:"azure_account,omitempty"`
+	AzureKey       string `json:"azure_key,omitempty" yaml:"azure_key,omitempty"`
 
 	// Local filesystem configuration
-	LocalPath string
+	LocalPath string `json:"local_path,omitempty" yaml:"local_path,omitempty"`
 }

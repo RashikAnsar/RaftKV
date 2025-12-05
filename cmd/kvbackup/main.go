@@ -1,9 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"text/tabwriter"
+	"time"
 
+	"github.com/RashikAnsar/raftkv/internal/backup"
+	"github.com/RashikAnsar/raftkv/internal/backup/providers"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +42,12 @@ and scheduling automated backups.`,
 	}
 }
 
+// Helper function to create storage provider from config
+func createProvider(cfg *backup.ProviderConfig) (backup.StorageProvider, error) {
+	ctx := context.Background()
+	return providers.NewStorageProvider(ctx, *cfg)
+}
+
 func createCmd() *cobra.Command {
 	var (
 		configPath string
@@ -47,9 +60,69 @@ func createCmd() *cobra.Command {
 		Short: "Create a new backup",
 		Long:  "Create a new backup of the RaftKV database",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement backup creation
-			log.Printf("Creating backup from %s with config %s", dbPath, configPath)
-			return fmt.Errorf("not implemented yet")
+			ctx := context.Background()
+
+			// Load configuration
+			cfg, err := backup.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create storage provider
+			provider, err := createProvider(&cfg.Provider)
+			if err != nil {
+				return fmt.Errorf("failed to create provider: %w", err)
+			}
+
+			// Convert to backup config
+			backupCfg, err := cfg.ToBackupConfig()
+			if err != nil {
+				return fmt.Errorf("failed to convert config: %w", err)
+			}
+
+			// Create backup manager
+			manager, err := backup.NewBackupManager(provider, backupCfg)
+			if err != nil {
+				return fmt.Errorf("failed to create backup manager: %w", err)
+			}
+
+			// Open database file
+			dbFile, err := os.Open(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to open database file: %w", err)
+			}
+			defer dbFile.Close()
+
+			// Get file info for size
+			fileInfo, err := dbFile.Stat()
+			if err != nil {
+				return fmt.Errorf("failed to stat database file: %w", err)
+			}
+
+			log.Printf("Creating backup from %s (%d bytes)...", dbPath, fileInfo.Size())
+
+			// Create backup (using index 0, term 0 as we don't have Raft metadata from file)
+			metadata, err := manager.CreateBackup(ctx, dbFile, 0, 0)
+			if err != nil {
+				return fmt.Errorf("failed to create backup: %w", err)
+			}
+
+			// Print success message
+			fmt.Printf("\n✓ Backup created successfully!\n\n")
+			fmt.Printf("  Backup ID:       %s\n", metadata.ID)
+			fmt.Printf("  Timestamp:       %s\n", metadata.Timestamp.Format(time.RFC3339))
+			fmt.Printf("  Original Size:   %d bytes\n", metadata.Size)
+			fmt.Printf("  Compressed Size: %d bytes\n", metadata.CompressedSize)
+			if metadata.Size > 0 {
+				ratio := (1.0 - float64(metadata.CompressedSize)/float64(metadata.Size)) * 100
+				fmt.Printf("  Compression:     %.2f%%\n", ratio)
+			}
+			fmt.Printf("  Encrypted:       %v\n", metadata.Encrypted)
+			fmt.Printf("  Status:          %s\n", metadata.Status)
+			fmt.Printf("  Checksum:        %s\n", metadata.Checksum[:16]+"...")
+			fmt.Println()
+
+			return nil
 		},
 	}
 
@@ -73,9 +146,65 @@ func listCmd() *cobra.Command {
 		Short: "List available backups",
 		Long:  "List all available backups with metadata",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement backup listing
-			log.Printf("Listing backups with config %s (format: %s)", configPath, format)
-			return fmt.Errorf("not implemented yet")
+			ctx := context.Background()
+
+			// Load configuration
+			cfg, err := backup.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create storage provider
+			provider, err := createProvider(&cfg.Provider)
+			if err != nil {
+				return fmt.Errorf("failed to create provider: %w", err)
+			}
+
+			// Convert to backup config
+			backupCfg, err := cfg.ToBackupConfig()
+			if err != nil {
+				return fmt.Errorf("failed to convert config: %w", err)
+			}
+
+			// Create backup manager
+			manager, err := backup.NewBackupManager(provider, backupCfg)
+			if err != nil {
+				return fmt.Errorf("failed to create backup manager: %w", err)
+			}
+
+			// List backups
+			backups, err := manager.ListBackups(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to list backups: %w", err)
+			}
+
+			if len(backups) == 0 {
+				fmt.Println("No backups found.")
+				return nil
+			}
+
+			// Print backups in table format
+			fmt.Printf("\nFound %d backup(s):\n\n", len(backups))
+
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "ID\tTIMESTAMP\tSIZE\tCOMPRESSED\tENCRYPTED\tSTATUS")
+			fmt.Fprintln(w, "--\t---------\t----\t----------\t---------\t------")
+
+			for _, b := range backups {
+				fmt.Fprintf(w, "%s\t%s\t%d\t%v\t%v\t%s\n",
+					b.ID[:16]+"...",
+					b.Timestamp.Format("2006-01-02 15:04:05"),
+					b.CompressedSize,
+					b.Compressed,
+					b.Encrypted,
+					b.Status,
+				)
+			}
+
+			w.Flush()
+			fmt.Println()
+
+			return nil
 		},
 	}
 
@@ -99,9 +228,96 @@ func restoreCmd() *cobra.Command {
 		Short: "Restore from backup",
 		Long:  "Restore RaftKV database from a backup",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement restore
-			log.Printf("Restoring backup %s to %s (force: %v)", backupID, dbPath, force)
-			return fmt.Errorf("not implemented yet")
+			ctx := context.Background()
+
+			// Load configuration
+			cfg, err := backup.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create storage provider
+			provider, err := createProvider(&cfg.Provider)
+			if err != nil {
+				return fmt.Errorf("failed to create provider: %w", err)
+			}
+
+			// Convert to backup config
+			backupCfg, err := cfg.ToBackupConfig()
+			if err != nil {
+				return fmt.Errorf("failed to convert config: %w", err)
+			}
+
+			// Handle 'latest' keyword
+			if backupID == "latest" {
+				manager, err := backup.NewBackupManager(provider, backupCfg)
+				if err != nil {
+					return fmt.Errorf("failed to create backup manager: %w", err)
+				}
+
+				backups, err := manager.ListBackups(ctx)
+				if err != nil {
+					return fmt.Errorf("failed to list backups: %w", err)
+				}
+
+				if len(backups) == 0 {
+					return fmt.Errorf("no backups available")
+				}
+
+				backupID = backups[0].ID
+				log.Printf("Using latest backup: %s", backupID)
+			}
+
+			// Check if output file exists
+			if !force {
+				if _, err := os.Stat(dbPath); err == nil {
+					return fmt.Errorf("database file already exists at %s (use --force to overwrite)", dbPath)
+				}
+			}
+
+			// Create directory if needed
+			dir := filepath.Dir(dbPath)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return fmt.Errorf("failed to create directory: %w", err)
+			}
+
+			// Create compressor and encryptor for restore
+			compressor, err := backup.NewCompressor(backupCfg.CompressionType, backupCfg.CompressionLevel)
+			if err != nil {
+				return fmt.Errorf("failed to create compressor: %w", err)
+			}
+
+			encryptor, err := backup.NewEncryptor(backupCfg.EncryptionType, backupCfg.EncryptionKey)
+			if err != nil {
+				return fmt.Errorf("failed to create encryptor: %w", err)
+			}
+
+			restorer := backup.NewRestoreManager(provider, compressor, encryptor)
+
+			log.Printf("Restoring backup %s to %s...", backupID, dbPath)
+
+			// Create output file
+			outFile, err := os.Create(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to create output file: %w", err)
+			}
+			defer outFile.Close()
+
+			// Restore backup
+			err = restorer.RestoreBackup(ctx, backupID, outFile)
+			if err != nil {
+				os.Remove(dbPath) // Clean up on error
+				return fmt.Errorf("failed to restore backup: %w", err)
+			}
+
+			fileInfo, _ := outFile.Stat()
+			fmt.Printf("\n✓ Backup restored successfully!\n\n")
+			fmt.Printf("  Backup ID:    %s\n", backupID)
+			fmt.Printf("  Output File:  %s\n", dbPath)
+			fmt.Printf("  Size:         %d bytes\n", fileInfo.Size())
+			fmt.Println()
+
+			return nil
 		},
 	}
 
@@ -128,9 +344,54 @@ func deleteCmd() *cobra.Command {
 		Short: "Delete a backup",
 		Long:  "Delete a specific backup from storage",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement deletion
-			log.Printf("Deleting backup %s (force: %v)", backupID, force)
-			return fmt.Errorf("not implemented yet")
+			ctx := context.Background()
+
+			// Load configuration
+			cfg, err := backup.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create storage provider
+			provider, err := createProvider(&cfg.Provider)
+			if err != nil {
+				return fmt.Errorf("failed to create provider: %w", err)
+			}
+
+			// Convert to backup config
+			backupCfg, err := cfg.ToBackupConfig()
+			if err != nil {
+				return fmt.Errorf("failed to convert config: %w", err)
+			}
+
+			// Create backup manager
+			manager, err := backup.NewBackupManager(provider, backupCfg)
+			if err != nil {
+				return fmt.Errorf("failed to create backup manager: %w", err)
+			}
+
+			// Confirm deletion if not forced
+			if !force {
+				fmt.Printf("Are you sure you want to delete backup %s? (yes/no): ", backupID)
+				var response string
+				fmt.Scanln(&response)
+				if response != "yes" {
+					fmt.Println("Deletion cancelled.")
+					return nil
+				}
+			}
+
+			log.Printf("Deleting backup %s...", backupID)
+
+			// Delete backup
+			err = manager.DeleteBackup(ctx, backupID)
+			if err != nil {
+				return fmt.Errorf("failed to delete backup: %w", err)
+			}
+
+			fmt.Printf("\n✓ Backup %s deleted successfully!\n\n", backupID)
+
+			return nil
 		},
 	}
 
@@ -154,9 +415,75 @@ func verifyCmd() *cobra.Command {
 		Short: "Verify backup integrity",
 		Long:  "Verify the integrity of a backup by checking checksums",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement verification
-			log.Printf("Verifying backup %s", backupID)
-			return fmt.Errorf("not implemented yet")
+			ctx := context.Background()
+
+			// Load configuration
+			cfg, err := backup.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Create storage provider
+			provider, err := createProvider(&cfg.Provider)
+			if err != nil {
+				return fmt.Errorf("failed to create provider: %w", err)
+			}
+
+			// Convert to backup config
+			backupCfg, err := cfg.ToBackupConfig()
+			if err != nil {
+				return fmt.Errorf("failed to convert config: %w", err)
+			}
+
+			// Create backup manager
+			manager, err := backup.NewBackupManager(provider, backupCfg)
+			if err != nil {
+				return fmt.Errorf("failed to create backup manager: %w", err)
+			}
+
+			// Handle 'all' keyword
+			if backupID == "all" {
+				backups, err := manager.ListBackups(ctx)
+				if err != nil {
+					return fmt.Errorf("failed to list backups: %w", err)
+				}
+
+				if len(backups) == 0 {
+					fmt.Println("No backups to verify.")
+					return nil
+				}
+
+				fmt.Printf("Verifying %d backup(s)...\n\n", len(backups))
+
+				failed := 0
+				for i, b := range backups {
+					fmt.Printf("[%d/%d] Verifying %s... ", i+1, len(backups), b.ID[:16]+"...")
+					err := manager.VerifyBackup(ctx, b.ID)
+					if err != nil {
+						fmt.Printf("FAILED: %v\n", err)
+						failed++
+					} else {
+						fmt.Println("OK")
+					}
+				}
+
+				fmt.Printf("\n✓ Verification complete: %d passed, %d failed\n\n", len(backups)-failed, failed)
+				return nil
+			}
+
+			// Verify single backup
+			log.Printf("Verifying backup %s...", backupID)
+
+			err = manager.VerifyBackup(ctx, backupID)
+			if err != nil {
+				return fmt.Errorf("verification failed: %w", err)
+			}
+
+			fmt.Printf("\n✓ Backup %s verified successfully!\n", backupID)
+			fmt.Println("  Checksum: OK")
+			fmt.Println()
+
+			return nil
 		},
 	}
 
@@ -193,9 +520,30 @@ func scheduleStartCmd() *cobra.Command {
 		Short: "Start backup scheduler",
 		Long:  "Start the automated backup scheduler",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement scheduler start
-			log.Printf("Starting backup scheduler (daemon: %v)", daemon)
-			return fmt.Errorf("not implemented yet")
+			// Load configuration
+			cfg, err := backup.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if cfg.Schedule == nil || !cfg.Schedule.Enabled {
+				return fmt.Errorf("scheduling is not enabled in configuration")
+			}
+
+			if daemon {
+				fmt.Println("Note: Daemon mode requires a process manager (systemd, supervisord, etc.)")
+				fmt.Println("For now, please run without --daemon flag or integrate with your process manager.")
+				return fmt.Errorf("daemon mode not yet implemented - run without --daemon for foreground mode")
+			}
+
+			fmt.Printf("Backup scheduler would run with:\n")
+			fmt.Printf("  Schedule: %s\n", cfg.Schedule.CronExpression)
+			fmt.Printf("  Timezone: %s\n", cfg.Schedule.Timezone)
+			fmt.Printf("  Pruning:  %v\n", cfg.Schedule.EnablePruning)
+			fmt.Println("\nNote: Full scheduler implementation requires integration with the RaftKV server.")
+			fmt.Println("For now, use cron or systemd timers to run 'kvbackup create' periodically.")
+
+			return nil
 		},
 	}
 
@@ -212,9 +560,10 @@ func scheduleStopCmd() *cobra.Command {
 		Short: "Stop backup scheduler",
 		Long:  "Stop the running backup scheduler",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement scheduler stop
-			log.Println("Stopping backup scheduler")
-			return fmt.Errorf("not implemented yet")
+			fmt.Println("Note: Scheduler stop requires a running scheduler process.")
+			fmt.Println("If using cron, disable the cron job.")
+			fmt.Println("If using systemd, run: systemctl stop raftkv-backup.timer")
+			return nil
 		},
 	}
 
@@ -227,9 +576,10 @@ func scheduleStatusCmd() *cobra.Command {
 		Short: "Show scheduler status",
 		Long:  "Show the status of the backup scheduler",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement scheduler status
-			log.Println("Checking scheduler status")
-			return fmt.Errorf("not implemented yet")
+			fmt.Println("Note: Scheduler status requires a running scheduler process.")
+			fmt.Println("If using cron, check: crontab -l | grep kvbackup")
+			fmt.Println("If using systemd, run: systemctl status raftkv-backup.timer")
+			return nil
 		},
 	}
 

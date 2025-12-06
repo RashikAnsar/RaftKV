@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/RashikAnsar/raftkv/api/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// ReplicationService provides CDC streaming for multi-datacenter replication
+service ReplicationService {
+  // StreamChanges streams change events from a datacenter
+  // Client specifies starting index and receives all subsequent changes
+  rpc StreamChanges(StreamRequest) returns (stream ChangeEvent);
+
+  // GetReplicationStatus returns current replication status
+  rpc GetReplicationStatus(StatusRequest) returns (ReplicationStatus);
+
+  // Heartbeat for connection health checking
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+// StreamRequest specifies parameters for change streaming
+message StreamRequest {
+  // Starting Raft index (exclusive) - stream events after this index
+  uint64 from_index = 1;
+
+  // Datacenter ID of the requesting DC
+  string datacenter_id = 2;
+
+  // Optional key prefix filter
+  string key_prefix = 3;
+
+  // Batch size for streaming (0 = default)
+  int32 batch_size = 4;
+}
+
+// ChangeEvent represents a single change in the key-value store
+message ChangeEvent {
+  // Raft metadata
+  uint64 raft_index = 1;
+  uint64 raft_term = 2;
+
+  // Operation type: "put" or "delete"
+  string operation = 3;
+
+  // Key-value data
+  string key = 4;
+  bytes value = 5;
+
+  // Timestamp when the change occurred
+  google.protobuf.Timestamp timestamp = 6;
+
+  // Source datacenter ID
+  string datacenter_id = 7;
+
+  // CDC sequence number
+  uint64 sequence_num = 8;
+
+  // Vector clock for conflict resolution (map of DC ID -> logical clock)
+  map<string, uint64> vector_clock = 9;
+}
+
+// StatusRequest for querying replication status
+message StatusRequest {
+  // Datacenter ID to check status for (empty = all)
+  string datacenter_id = 1;
+}
+
+// ReplicationStatus describes the current replication state
+message ReplicationStatus {
+  // Current datacenter ID
+  string datacenter_id = 1;
+
+  // Last applied Raft index
+  uint64 last_index = 2;
+
+  // Last applied Raft term
+  uint64 last_term = 3;
+
+  // Replication lag per target DC
+  map<string, DatacenterLag> lag_by_dc = 4;
+
+  // Overall health status
+  HealthStatus health = 5;
+
+  // Total events replicated
+  uint64 events_replicated = 6;
+
+  // Total events dropped
+  uint64 events_dropped = 7;
+}
+
+// DatacenterLag describes replication lag to a specific DC
+message DatacenterLag {
+  // Target datacenter ID
+  string datacenter_id = 1;
+
+  // Last replicated index to this DC
+  uint64 last_replicated_index = 2;
+
+  // Lag in number of entries
+  uint64 lag_entries = 3;
+
+  // Estimated lag in seconds
+  double lag_seconds = 4;
+
+  // Connection status
+  bool connected = 5;
+
+  // Last successful replication timestamp
+  google.protobuf.Timestamp last_success = 6;
+}
+
+// HealthStatus represents overall replication health
+enum HealthStatus {
+  HEALTH_UNKNOWN = 0;
+  HEALTH_HEALTHY = 1;
+  HEALTH_DEGRADED = 2;
+  HEALTH_UNHEALTHY = 3;
+}
+
+// HeartbeatRequest for connection health checking
+message HeartbeatRequest {
+  string datacenter_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// HeartbeatResponse confirms connection is alive
+message HeartbeatResponse {
+  string datacenter_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  HealthStatus health = 3;
+}

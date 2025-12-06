@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
+	"github.com/RashikAnsar/raftkv/internal/cdc"
 	"github.com/RashikAnsar/raftkv/internal/storage"
 	"github.com/hashicorp/raft"
 	"go.uber.org/zap"
@@ -23,8 +25,9 @@ type Command struct {
 }
 
 type FSM struct {
-	store  *storage.DurableStore // Changed from storage.Store interface to concrete type
-	logger *zap.Logger
+	store       *storage.DurableStore // Changed from storage.Store interface to concrete type
+	logger      *zap.Logger
+	cdcPublisher *cdc.Publisher // Optional CDC publisher for change data capture
 }
 
 func NewFSM(store *storage.DurableStore, logger *zap.Logger) *FSM {
@@ -32,6 +35,13 @@ func NewFSM(store *storage.DurableStore, logger *zap.Logger) *FSM {
 		store:  store,
 		logger: logger,
 	}
+}
+
+// SetCDCPublisher sets the CDC publisher for the FSM
+// This is optional and used for multi-DC replication
+func (f *FSM) SetCDCPublisher(publisher *cdc.Publisher) {
+	f.cdcPublisher = publisher
+	f.logger.Info("CDC publisher attached to FSM")
 }
 
 func (f *FSM) Apply(log *raft.Log) interface{} {
@@ -56,6 +66,27 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 			zap.Error(err),
 		)
 		return err
+	}
+
+	// Publish CDC event if publisher is configured
+	if f.cdcPublisher != nil {
+		event := &cdc.ChangeEvent{
+			RaftIndex: log.Index,
+			RaftTerm:  log.Term,
+			Operation: cmd.Op,
+			Key:       cmd.Key,
+			Value:     cmd.Value,
+			Timestamp: time.Now(),
+		}
+
+		if err := f.cdcPublisher.Publish(ctx, event); err != nil {
+			// Log error but don't fail the operation
+			// CDC is async and shouldn't block the main path
+			f.logger.Warn("Failed to publish CDC event",
+				zap.Error(err),
+				zap.Uint64("index", log.Index),
+			)
+		}
 	}
 
 	f.logger.Debug("Applied Raft entry",

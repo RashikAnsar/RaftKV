@@ -23,6 +23,7 @@ const (
 	// Operation types
 	OpPut    = 0x01
 	OpDelete = 0x02
+	OpCAS    = 0x03 // Compare-And-Swap (Value contains: expectedVersion(8 bytes) + newValue)
 
 	// Size constants
 	walHeaderSize   = 32 // magic(2) + version(1) + op(1) + raftIndex(8) + raftTerm(8) + timestamp(8) + length(4)

@@ -6,21 +6,32 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
+
+// KeyValue represents a versioned key-value pair
+type KeyValue struct {
+	Key       string
+	Value     []byte
+	Version   uint64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
 
 type MemoryStore struct {
 	mu     sync.RWMutex
-	data   map[string][]byte
+	data   map[string]*KeyValue
 	closed atomic.Bool
 
 	statsGets    atomic.Int64
 	statsPuts    atomic.Int64
 	statsDeletes atomic.Int64
+	statsCAS     atomic.Int64 // CAS operations counter
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		data: make(map[string][]byte),
+		data: make(map[string]*KeyValue),
 	}
 }
 
@@ -38,7 +49,7 @@ func (s *MemoryStore) Get(ctx context.Context, key string) ([]byte, error) {
 	}
 
 	s.mu.RLock()
-	value, exists := s.data[key]
+	kv, exists := s.data[key]
 	s.mu.RUnlock()
 
 	s.statsGets.Add(1)
@@ -47,8 +58,8 @@ func (s *MemoryStore) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, ErrKeyNotFound
 	}
 
-	result := make([]byte, len(value))
-	copy(result, value)
+	result := make([]byte, len(kv.Value))
+	copy(result, kv.Value)
 
 	return result, nil
 }
@@ -69,8 +80,28 @@ func (s *MemoryStore) Put(ctx context.Context, key string, value []byte) error {
 	valueCopy := make([]byte, len(value))
 	copy(valueCopy, value)
 
+	now := time.Now()
 	s.mu.Lock()
-	s.data[key] = valueCopy
+	existing, exists := s.data[key]
+	if exists {
+		// Update existing key - increment version
+		s.data[key] = &KeyValue{
+			Key:       key,
+			Value:     valueCopy,
+			Version:   existing.Version + 1,
+			CreatedAt: existing.CreatedAt,
+			UpdatedAt: now,
+		}
+	} else {
+		// New key - version starts at 1
+		s.data[key] = &KeyValue{
+			Key:       key,
+			Value:     valueCopy,
+			Version:   1,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+	}
 	s.mu.Unlock()
 
 	s.statsPuts.Add(1)
@@ -168,10 +199,131 @@ func (s *MemoryStore) Close() error {
 
 func (s *MemoryStore) Reset() {
 	s.mu.Lock()
-	s.data = make(map[string][]byte)
+	s.data = make(map[string]*KeyValue)
 	s.mu.Unlock()
 
 	s.statsGets.Store(0)
 	s.statsPuts.Store(0)
 	s.statsDeletes.Store(0)
+	s.statsCAS.Store(0)
+}
+
+// GetWithVersion retrieves both the value and version for a key
+func (s *MemoryStore) GetWithVersion(ctx context.Context, key string) ([]byte, uint64, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	if key == "" {
+		return nil, 0, ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return nil, 0, ErrStoreClosed
+	}
+
+	s.mu.RLock()
+	kv, exists := s.data[key]
+	s.mu.RUnlock()
+
+	s.statsGets.Add(1)
+
+	if !exists {
+		return nil, 0, ErrKeyNotFound
+	}
+
+	result := make([]byte, len(kv.Value))
+	copy(result, kv.Value)
+
+	return result, kv.Version, nil
+}
+
+// CompareAndSwap atomically updates a key if the current version matches expectedVersion
+// Returns the current version and whether the swap succeeded
+func (s *MemoryStore) CompareAndSwap(ctx context.Context, key string, expectedVersion uint64, newValue []byte) (uint64, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, false, err
+	}
+
+	if key == "" {
+		return 0, false, ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return 0, false, ErrStoreClosed
+	}
+
+	valueCopy := make([]byte, len(newValue))
+	copy(valueCopy, newValue)
+
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existing, exists := s.data[key]
+	if !exists {
+		// Key doesn't exist - CAS fails
+		s.statsCAS.Add(1)
+		return 0, false, nil
+	}
+
+	if existing.Version != expectedVersion {
+		// Version mismatch - CAS fails
+		s.statsCAS.Add(1)
+		return existing.Version, false, nil
+	}
+
+	// Version matches - perform the swap
+	s.data[key] = &KeyValue{
+		Key:       key,
+		Value:     valueCopy,
+		Version:   existing.Version + 1,
+		CreatedAt: existing.CreatedAt,
+		UpdatedAt: now,
+	}
+
+	s.statsCAS.Add(1)
+	return existing.Version + 1, true, nil
+}
+
+// SetIfNotExists atomically creates a key only if it doesn't exist
+// Returns the version and whether the key was created
+func (s *MemoryStore) SetIfNotExists(ctx context.Context, key string, value []byte) (uint64, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, false, err
+	}
+
+	if key == "" {
+		return 0, false, ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return 0, false, ErrStoreClosed
+	}
+
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
+
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.data[key]; exists {
+		// Key already exists - operation fails
+		s.statsCAS.Add(1)
+		return 0, false, nil
+	}
+
+	// Key doesn't exist - create it
+	s.data[key] = &KeyValue{
+		Key:       key,
+		Value:     valueCopy,
+		Version:   1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	s.statsCAS.Add(1)
+	s.statsPuts.Add(1)
+	return 1, true, nil
 }

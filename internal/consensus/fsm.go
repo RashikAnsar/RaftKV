@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,17 +17,19 @@ import (
 const (
 	OpTypePut    = "put"
 	OpTypeDelete = "delete"
+	OpTypeCAS    = "cas"
 )
 
 type Command struct {
-	Op    string `json:"op"`
-	Key   string `json:"key"`
-	Value []byte `json:"value"`
+	Op              string `json:"op"`
+	Key             string `json:"key"`
+	Value           []byte `json:"value"`
+	ExpectedVersion uint64 `json:"expected_version,omitempty"` // For CAS operations
 }
 
 type FSM struct {
-	store       *storage.DurableStore // Changed from storage.Store interface to concrete type
-	logger      *zap.Logger
+	store        *storage.DurableStore // Changed from storage.Store interface to concrete type
+	logger       *zap.Logger
 	cdcPublisher *cdc.Publisher // Optional CDC publisher for change data capture
 }
 
@@ -55,9 +58,19 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		return fmt.Errorf("failed to unmarshal command: %w", err)
 	}
 
+	// For CAS operations, encode the expected version into the value
+	value := cmd.Value
+	if cmd.Op == OpTypeCAS {
+		// Encode: expectedVersion (8 bytes) + newValue
+		casValue := make([]byte, 8+len(cmd.Value))
+		binary.BigEndian.PutUint64(casValue[0:8], cmd.ExpectedVersion)
+		copy(casValue[8:], cmd.Value)
+		value = casValue
+	}
+
 	// Use ApplyRaftEntry with context
 	ctx := context.Background()
-	if err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, cmd.Op, cmd.Key, cmd.Value); err != nil {
+	if err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, cmd.Op, cmd.Key, value); err != nil {
 		f.logger.Error("Failed to apply Raft entry",
 			zap.String("op", cmd.Op),
 			zap.String("key", cmd.Key),
@@ -75,7 +88,7 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 			RaftTerm:  log.Term,
 			Operation: cmd.Op,
 			Key:       cmd.Key,
-			Value:     cmd.Value,
+			Value:     cmd.Value, // Use original value, not encoded
 			Timestamp: time.Now(),
 		}
 

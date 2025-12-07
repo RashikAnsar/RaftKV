@@ -280,3 +280,12 @@ func (r *Router) GetRoutingStats() map[string]interface{} {
 
 	return stats
 }
+
+// OnShardMapUpdate implements the UpdateListener interface
+// This allows the router to receive automatic updates from the MetaFSM
+func (r *Router) OnShardMapUpdate(shardMap *ShardMap) {
+	// Delegate to UpdateShardMap which handles version checking and hash ring updates
+	if err := r.UpdateShardMap(shardMap); err != nil {
+		r.logger.Error("Failed to update shard map from listener", zap.Error(err))
+	}
+}

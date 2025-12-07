@@ -79,6 +79,18 @@ func (m *MockShardStore) Count(ctx context.Context) (int64, error) {
 	return int64(len(m.data)), nil
 }
 
+// GetAllData returns a copy of all data (thread-safe)
+func (m *MockShardStore) GetAllData() map[string][]byte {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make(map[string][]byte)
+	for k, v := range m.data {
+		result[k] = v
+	}
+	return result
+}
+
 // MockIterator implements Iterator
 type MockIterator struct {
 	keys   []string
@@ -118,6 +130,7 @@ func (m *MockIterator) Close() error {
 // FailingMockShardStore simulates failures
 type FailingMockShardStore struct {
 	*MockShardStore
+	mu        sync.RWMutex
 	failPut   bool
 	failCount int
 }
@@ -129,11 +142,29 @@ func NewFailingMockShardStore() *FailingMockShardStore {
 }
 
 func (f *FailingMockShardStore) Put(ctx context.Context, key string, value []byte) error {
-	if f.failPut {
+	f.mu.Lock()
+	shouldFail := f.failPut
+	if shouldFail {
 		f.failCount++
+	}
+	f.mu.Unlock()
+
+	if shouldFail {
 		return errors.New("simulated put failure")
 	}
 	return f.MockShardStore.Put(ctx, key, value)
+}
+
+func (f *FailingMockShardStore) SetFailPut(fail bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failPut = fail
+}
+
+func (f *FailingMockShardStore) GetFailCount() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.failCount
 }
 
 func TestMigrator_NewMigrator(t *testing.T) {
@@ -188,11 +219,13 @@ func TestMigrator_StartMigration(t *testing.T) {
 	// Wait for migration to complete
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify data was copied
-	assert.Equal(t, len(sourceStore.data), len(targetStore.data))
+	// Verify data was copied (using thread-safe methods)
+	sourceData := sourceStore.GetAllData()
+	targetData := targetStore.GetAllData()
+	assert.Equal(t, len(sourceData), len(targetData))
 
-	for key, value := range sourceStore.data {
-		targetValue, exists := targetStore.data[key]
+	for key, value := range sourceData {
+		targetValue, exists := targetData[key]
 		assert.True(t, exists, "Key %s should exist in target", key)
 		assert.Equal(t, value, targetValue)
 	}
@@ -327,8 +360,9 @@ func TestMigrator_BatchCopy(t *testing.T) {
 	// Wait for migration
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify all data copied
-	assert.Equal(t, 50, len(targetStore.data))
+	// Verify all data copied (using thread-safe method)
+	targetData := targetStore.GetAllData()
+	assert.Equal(t, 50, len(targetData))
 }
 
 func TestMigrator_EmptySource(t *testing.T) {
@@ -360,8 +394,9 @@ func TestMigrator_EmptySource(t *testing.T) {
 	// Wait for migration
 	time.Sleep(200 * time.Millisecond)
 
-	// Verify target is also empty
-	assert.Equal(t, 0, len(targetStore.data))
+	// Verify target is also empty (using thread-safe method)
+	targetData := targetStore.GetAllData()
+	assert.Equal(t, 0, len(targetData))
 }
 
 func TestMigrator_CopyWithRetry(t *testing.T) {
@@ -394,7 +429,7 @@ func TestMigrator_CopyWithRetry(t *testing.T) {
 	}
 
 	// Enable failures initially
-	targetStore.failPut = true
+	targetStore.SetFailPut(true)
 
 	ctx := context.Background()
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
@@ -402,13 +437,14 @@ func TestMigrator_CopyWithRetry(t *testing.T) {
 
 	// Wait a bit, then disable failures
 	time.Sleep(100 * time.Millisecond)
-	targetStore.failPut = false
+	targetStore.SetFailPut(false)
 
 	// Migration should eventually fail due to retries being exhausted
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify some failures occurred
-	assert.Greater(t, targetStore.failCount, 0)
+	// Verify some failures occurred (using thread-safe method)
+	failCount := targetStore.GetFailCount()
+	assert.Greater(t, failCount, 0)
 }
 
 func TestMockIterator_Empty(t *testing.T) {

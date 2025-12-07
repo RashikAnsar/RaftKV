@@ -107,9 +107,21 @@ func (s *DurableStore) recover() error {
 
 	if snapshot != nil {
 		// Load snapshot data into memory
-		for key, value := range snapshot.Data {
-			if err := s.memory.Put(ctx, key, value); err != nil {
-				return fmt.Errorf("failed to apply snapshot data: %w", err)
+		// Prefer DataWithVersion (new format) over Data (legacy format)
+		if snapshot.DataWithVersion != nil && len(snapshot.DataWithVersion) > 0 {
+			// New format with version information
+			for key, kv := range snapshot.DataWithVersion {
+				// Directly restore KeyValue with version
+				if err := s.memory.RestoreKeyValue(ctx, key, kv); err != nil {
+					return fmt.Errorf("failed to apply snapshot data: %w", err)
+				}
+			}
+		} else if snapshot.Data != nil {
+			// Legacy format without version information
+			for key, value := range snapshot.Data {
+				if err := s.memory.Put(ctx, key, value); err != nil {
+					return fmt.Errorf("failed to apply snapshot data: %w", err)
+				}
 			}
 		}
 
@@ -129,10 +141,21 @@ func (s *DurableStore) recover() error {
 
 	// Apply entries after snapshot index
 	appliedCount := 0
+	entryIndex := uint64(0)
 	for _, entry := range entries {
-		// Skip entries already in snapshot (if we have snapshot metadata)
-		if snapshot != nil && entry.RaftIndex > 0 && entry.RaftIndex <= snapshot.RaftIndex {
-			continue
+		entryIndex++
+
+		// Skip entries already in snapshot
+		// Check both RaftIndex (for Raft-based operations) and WAL entry position (for direct operations)
+		if snapshot != nil {
+			// If entry has RaftIndex, use that for comparison
+			if entry.RaftIndex > 0 && entry.RaftIndex <= snapshot.RaftIndex {
+				continue
+			}
+			// Otherwise, use WAL entry position (for non-Raft operations like direct Put/CAS in tests)
+			if entry.RaftIndex == 0 && entryIndex <= snapshot.Index {
+				continue
+			}
 		}
 
 		switch entry.Operation {
@@ -320,14 +343,18 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 		return "", fmt.Errorf("failed to list keys: %w", err)
 	}
 
-	data := make(map[string][]byte, len(keys))
+	dataWithVersion := make(map[string]*KeyValue, len(keys))
 	for _, key := range keys {
-		value, err := s.memory.Get(ctx, key)
+		value, version, err := s.memory.GetWithVersion(ctx, key)
 		if err != nil {
 			// Key might have been deleted, skip it
 			continue
 		}
-		data[key] = value
+		dataWithVersion[key] = &KeyValue{
+			Key:     key,
+			Value:   value,
+			Version: version,
+		}
 	}
 
 	s.mu.Lock()
@@ -336,7 +363,7 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 	raftTerm := s.lastRaftTerm
 	s.mu.Unlock()
 
-	if err := s.snapshotManager.CreateWithRaftMetadata(currentIndex, data, raftIndex, raftTerm); err != nil {
+	if err := s.snapshotManager.CreateWithRaftMetadataV2(currentIndex, dataWithVersion, raftIndex, raftTerm); err != nil {
 		return "", fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
@@ -392,9 +419,20 @@ func (s *DurableStore) Restore(ctx context.Context, snapshotPath string) error {
 
 	s.memory.Reset()
 
-	for key, value := range snapshot.Data {
-		if err := s.memory.Put(ctx, key, value); err != nil {
-			return fmt.Errorf("failed to restore key %s: %w", key, err)
+	// Handle both new and legacy snapshot formats
+	if snapshot.DataWithVersion != nil && len(snapshot.DataWithVersion) > 0 {
+		// New format with version information
+		for key, kv := range snapshot.DataWithVersion {
+			if err := s.memory.RestoreKeyValue(ctx, key, kv); err != nil {
+				return fmt.Errorf("failed to restore key %s: %w", key, err)
+			}
+		}
+	} else if snapshot.Data != nil {
+		// Legacy format without version information
+		for key, value := range snapshot.Data {
+			if err := s.memory.Put(ctx, key, value); err != nil {
+				return fmt.Errorf("failed to restore key %s: %w", key, err)
+			}
 		}
 	}
 

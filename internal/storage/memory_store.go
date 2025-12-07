@@ -208,6 +208,29 @@ func (s *MemoryStore) Reset() {
 	s.statsCAS.Store(0)
 }
 
+// RestoreKeyValue directly restores a KeyValue (used for snapshot recovery)
+func (s *MemoryStore) RestoreKeyValue(ctx context.Context, key string, kv *KeyValue) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if key == "" {
+		return ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return ErrStoreClosed
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Directly set the KeyValue to preserve version information
+	s.data[key] = kv
+
+	return nil
+}
+
 // GetWithVersion retrieves both the value and version for a key
 func (s *MemoryStore) GetWithVersion(ctx context.Context, key string) ([]byte, uint64, error) {
 	if err := ctx.Err(); err != nil {
@@ -308,10 +331,10 @@ func (s *MemoryStore) SetIfNotExists(ctx context.Context, key string, value []by
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.data[key]; exists {
-		// Key already exists - operation fails
+	if existing, exists := s.data[key]; exists {
+		// Key already exists - operation fails, return existing version
 		s.statsCAS.Add(1)
-		return 0, false, nil
+		return existing.Version, false, nil
 	}
 
 	// Key doesn't exist - create it

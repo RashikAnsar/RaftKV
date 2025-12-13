@@ -485,3 +485,536 @@ func BenchmarkMemoryStore_MixedWorkload(b *testing.B) {
 		}
 	})
 }
+
+// CAS (Compare-And-Swap) Tests
+
+func TestMemoryStore_GetWithVersion(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("Get version for new key", func(t *testing.T) {
+		err := store.Put(ctx, "key1", []byte("value1"))
+		if err != nil {
+			t.Fatalf("Put failed: %v", err)
+		}
+
+		value, version, err := store.GetWithVersion(ctx, "key1")
+		if err != nil {
+			t.Fatalf("GetWithVersion failed: %v", err)
+		}
+
+		if string(value) != "value1" {
+			t.Errorf("Expected 'value1', got '%s'", string(value))
+		}
+
+		if version != 1 {
+			t.Errorf("Expected version 1 for new key, got %d", version)
+		}
+	})
+
+	t.Run("Version increments on update", func(t *testing.T) {
+		store.Put(ctx, "key2", []byte("v1"))
+		_, v1, _ := store.GetWithVersion(ctx, "key2")
+
+		store.Put(ctx, "key2", []byte("v2"))
+		_, v2, _ := store.GetWithVersion(ctx, "key2")
+
+		store.Put(ctx, "key2", []byte("v3"))
+		_, v3, _ := store.GetWithVersion(ctx, "key2")
+
+		if v1 != 1 || v2 != 2 || v3 != 3 {
+			t.Errorf("Expected versions [1,2,3], got [%d,%d,%d]", v1, v2, v3)
+		}
+	})
+
+	t.Run("Get version for non-existent key", func(t *testing.T) {
+		_, _, err := store.GetWithVersion(ctx, "nonexistent")
+		if err != ErrKeyNotFound {
+			t.Errorf("Expected ErrKeyNotFound, got %v", err)
+		}
+	})
+
+	t.Run("Get version with empty key", func(t *testing.T) {
+		_, _, err := store.GetWithVersion(ctx, "")
+		if err != ErrInvalidKey {
+			t.Errorf("Expected ErrInvalidKey, got %v", err)
+		}
+	})
+}
+
+func TestMemoryStore_CompareAndSwap_Success(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Setup: Create a key with version 1
+	store.Put(ctx, "counter", []byte("0"))
+
+	t.Run("CAS succeeds with correct version", func(t *testing.T) {
+		newVersion, success, err := store.CompareAndSwap(ctx, "counter", 1, []byte("1"))
+		if err != nil {
+			t.Fatalf("CAS failed: %v", err)
+		}
+
+		if !success {
+			t.Error("CAS should have succeeded")
+		}
+
+		if newVersion != 2 {
+			t.Errorf("Expected new version 2, got %d", newVersion)
+		}
+
+		// Verify the value was updated
+		value, _ := store.Get(ctx, "counter")
+		if string(value) != "1" {
+			t.Errorf("Expected value '1', got '%s'", string(value))
+		}
+	})
+
+	t.Run("CAS succeeds multiple times", func(t *testing.T) {
+		store.Put(ctx, "seq", []byte("0"))
+
+		for i := 1; i <= 5; i++ {
+			newVersion, success, err := store.CompareAndSwap(ctx, "seq", uint64(i), []byte(fmt.Sprintf("%d", i)))
+			if err != nil {
+				t.Fatalf("CAS iteration %d failed: %v", i, err)
+			}
+			if !success {
+				t.Errorf("CAS iteration %d should have succeeded", i)
+			}
+			if newVersion != uint64(i+1) {
+				t.Errorf("Expected version %d, got %d", i+1, newVersion)
+			}
+		}
+
+		// Final value should be "5" with version 6
+		value, version, _ := store.GetWithVersion(ctx, "seq")
+		if string(value) != "5" || version != 6 {
+			t.Errorf("Expected value='5' version=6, got value='%s' version=%d", string(value), version)
+		}
+	})
+}
+
+func TestMemoryStore_CompareAndSwap_VersionMismatch(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Setup: Create a key with version 1
+	store.Put(ctx, "counter", []byte("10"))
+
+	t.Run("CAS fails with wrong version", func(t *testing.T) {
+		currentVersion, success, err := store.CompareAndSwap(ctx, "counter", 99, []byte("20"))
+		if err != nil {
+			t.Fatalf("CAS failed: %v", err)
+		}
+
+		if success {
+			t.Error("CAS should have failed due to version mismatch")
+		}
+
+		if currentVersion != 1 {
+			t.Errorf("Expected current version 1, got %d", currentVersion)
+		}
+
+		// Verify value was NOT updated
+		value, _ := store.Get(ctx, "counter")
+		if string(value) != "10" {
+			t.Errorf("Value should not have changed, got '%s'", string(value))
+		}
+	})
+
+	t.Run("CAS fails after concurrent update", func(t *testing.T) {
+		store.Put(ctx, "race", []byte("v1"))
+		_, v1, _ := store.GetWithVersion(ctx, "race")
+
+		// Simulate concurrent update
+		store.Put(ctx, "race", []byte("v2"))
+
+		// Now CAS with stale version should fail
+		_, success, err := store.CompareAndSwap(ctx, "race", v1, []byte("v3"))
+		if err != nil {
+			t.Fatalf("CAS failed: %v", err)
+		}
+
+		if success {
+			t.Error("CAS should have failed - version was stale")
+		}
+
+		// Value should still be "v2"
+		value, _ := store.Get(ctx, "race")
+		if string(value) != "v2" {
+			t.Errorf("Expected 'v2', got '%s'", string(value))
+		}
+	})
+}
+
+func TestMemoryStore_CompareAndSwap_KeyNotFound(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("CAS fails for non-existent key", func(t *testing.T) {
+		version, success, err := store.CompareAndSwap(ctx, "nonexistent", 1, []byte("value"))
+		if err != nil {
+			t.Fatalf("CAS failed: %v", err)
+		}
+
+		if success {
+			t.Error("CAS should fail for non-existent key")
+		}
+
+		if version != 0 {
+			t.Errorf("Expected version 0 for non-existent key, got %d", version)
+		}
+	})
+}
+
+func TestMemoryStore_CompareAndSwap_InvalidKey(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("CAS with empty key", func(t *testing.T) {
+		_, _, err := store.CompareAndSwap(ctx, "", 1, []byte("value"))
+		if err != ErrInvalidKey {
+			t.Errorf("Expected ErrInvalidKey, got %v", err)
+		}
+	})
+}
+
+func TestMemoryStore_SetIfNotExists_NewKey(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("SetIfNotExists succeeds for new key", func(t *testing.T) {
+		version, created, err := store.SetIfNotExists(ctx, "newkey", []byte("newvalue"))
+		if err != nil {
+			t.Fatalf("SetIfNotExists failed: %v", err)
+		}
+
+		if !created {
+			t.Error("Key should have been created")
+		}
+
+		if version != 1 {
+			t.Errorf("Expected version 1, got %d", version)
+		}
+
+		// Verify value was created
+		value, _ := store.Get(ctx, "newkey")
+		if string(value) != "newvalue" {
+			t.Errorf("Expected 'newvalue', got '%s'", string(value))
+		}
+	})
+}
+
+func TestMemoryStore_SetIfNotExists_ExistingKey(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Setup: Create an existing key
+	store.Put(ctx, "existing", []byte("original"))
+
+	t.Run("SetIfNotExists fails for existing key", func(t *testing.T) {
+		version, created, err := store.SetIfNotExists(ctx, "existing", []byte("newvalue"))
+		if err != nil {
+			t.Fatalf("SetIfNotExists failed: %v", err)
+		}
+
+		if created {
+			t.Error("Key should not have been created - already exists")
+		}
+
+		if version != 1 {
+			t.Errorf("Expected existing version 1 on failure, got %d", version)
+		}
+
+		// Verify original value unchanged
+		value, _ := store.Get(ctx, "existing")
+		if string(value) != "original" {
+			t.Errorf("Value should not have changed, got '%s'", string(value))
+		}
+	})
+}
+
+func TestMemoryStore_SetIfNotExists_InvalidKey(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("SetIfNotExists with empty key", func(t *testing.T) {
+		_, _, err := store.SetIfNotExists(ctx, "", []byte("value"))
+		if err != ErrInvalidKey {
+			t.Errorf("Expected ErrInvalidKey, got %v", err)
+		}
+	})
+}
+
+func TestMemoryStore_VersionIncrement(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("Version increments correctly", func(t *testing.T) {
+		// Create key
+		store.Put(ctx, "test", []byte("v1"))
+		_, v1, _ := store.GetWithVersion(ctx, "test")
+
+		// Update via Put
+		store.Put(ctx, "test", []byte("v2"))
+		_, v2, _ := store.GetWithVersion(ctx, "test")
+
+		// Update via CAS
+		store.CompareAndSwap(ctx, "test", v2, []byte("v3"))
+		_, v3, _ := store.GetWithVersion(ctx, "test")
+
+		// Another Put
+		store.Put(ctx, "test", []byte("v4"))
+		_, v4, _ := store.GetWithVersion(ctx, "test")
+
+		expected := []uint64{1, 2, 3, 4}
+		actual := []uint64{v1, v2, v3, v4}
+
+		for i := range expected {
+			if expected[i] != actual[i] {
+				t.Errorf("Version mismatch at step %d: expected %d, got %d", i, expected[i], actual[i])
+			}
+		}
+	})
+
+	t.Run("Delete doesn't affect version counter", func(t *testing.T) {
+		store.Put(ctx, "del", []byte("v1"))
+		_, v1, _ := store.GetWithVersion(ctx, "del")
+
+		store.Delete(ctx, "del")
+
+		// Recreate - should start at version 1 again
+		store.Put(ctx, "del", []byte("v2"))
+		_, v2, _ := store.GetWithVersion(ctx, "del")
+
+		if v1 != 1 || v2 != 1 {
+			t.Errorf("Expected both versions to be 1, got %d and %d", v1, v2)
+		}
+	})
+}
+
+func TestMemoryStore_CAS_ConcurrentUpdates(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	t.Run("Concurrent CAS operations", func(t *testing.T) {
+		// Create a counter
+		store.Put(ctx, "counter", []byte("0"))
+
+		const numGoroutines = 10
+		const incrementsPerGoroutine = 100
+
+		var wg sync.WaitGroup
+		successCount := make([]int, numGoroutines)
+
+		// Spawn multiple goroutines trying to increment the counter
+		for i := 0; i < numGoroutines; i++ {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				for j := 0; j < incrementsPerGoroutine; j++ {
+					for {
+						// Read current value and version
+						value, version, err := store.GetWithVersion(ctx, "counter")
+						if err != nil {
+							continue
+						}
+
+						// Parse current value
+						var current int
+						fmt.Sscanf(string(value), "%d", &current)
+
+						// Try to CAS with incremented value
+						newValue := []byte(fmt.Sprintf("%d", current+1))
+						_, success, err := store.CompareAndSwap(ctx, "counter", version, newValue)
+						if err != nil {
+							continue
+						}
+
+						if success {
+							successCount[id]++
+							break // Success, move to next increment
+						}
+						// CAS failed, retry
+					}
+				}
+			}(i)
+		}
+
+		wg.Wait()
+
+		// Verify final counter value
+		finalValue, finalVersion, _ := store.GetWithVersion(ctx, "counter")
+		var finalCount int
+		fmt.Sscanf(string(finalValue), "%d", &finalCount)
+
+		expectedCount := numGoroutines * incrementsPerGoroutine
+		if finalCount != expectedCount {
+			t.Errorf("Expected final count %d, got %d", expectedCount, finalCount)
+		}
+
+		// Version should be count + 1 (initial Put)
+		if finalVersion != uint64(expectedCount+1) {
+			t.Errorf("Expected final version %d, got %d", expectedCount+1, finalVersion)
+		}
+
+		// All goroutines should have succeeded exactly incrementsPerGoroutine times
+		for i, count := range successCount {
+			if count != incrementsPerGoroutine {
+				t.Errorf("Goroutine %d succeeded %d times, expected %d", i, count, incrementsPerGoroutine)
+			}
+		}
+	})
+}
+
+func TestMemoryStore_CAS_ClosedStore(t *testing.T) {
+	store := NewMemoryStore()
+	ctx := context.Background()
+
+	store.Put(ctx, "key", []byte("value"))
+	store.Close()
+
+	t.Run("CAS operations fail on closed store", func(t *testing.T) {
+		_, _, err := store.GetWithVersion(ctx, "key")
+		if err != ErrStoreClosed {
+			t.Errorf("Expected ErrStoreClosed, got %v", err)
+		}
+
+		_, _, err = store.CompareAndSwap(ctx, "key", 1, []byte("new"))
+		if err != ErrStoreClosed {
+			t.Errorf("Expected ErrStoreClosed, got %v", err)
+		}
+
+		_, _, err = store.SetIfNotExists(ctx, "newkey", []byte("value"))
+		if err != ErrStoreClosed {
+			t.Errorf("Expected ErrStoreClosed, got %v", err)
+		}
+	})
+}
+
+func TestMemoryStore_CAS_ContextCancellation(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	t.Run("CAS operations respect context", func(t *testing.T) {
+		_, _, err := store.GetWithVersion(ctx, "key")
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
+		}
+
+		_, _, err = store.CompareAndSwap(ctx, "key", 1, []byte("value"))
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
+		}
+
+		_, _, err = store.SetIfNotExists(ctx, "key", []byte("value"))
+		if err != context.Canceled {
+			t.Errorf("Expected context.Canceled, got %v", err)
+		}
+	})
+}
+
+func TestMemoryStore_CAS_Stats(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Perform CAS operations
+	store.Put(ctx, "key1", []byte("v1"))
+	store.CompareAndSwap(ctx, "key1", 1, []byte("v2"))     // Success
+	store.CompareAndSwap(ctx, "key1", 1, []byte("v3"))     // Fail - wrong version
+	store.SetIfNotExists(ctx, "key2", []byte("v1"))        // Success
+	store.SetIfNotExists(ctx, "key2", []byte("v2"))        // Fail - exists
+	store.CompareAndSwap(ctx, "nonexistent", 1, []byte("x")) // Fail - not found
+
+	stats := store.Stats()
+
+	// 1 successful CAS + 2 failed CAS + 1 successful SetIfNotExists + 1 failed SetIfNotExists + 1 failed CAS = 6 total
+	// Note: SetIfNotExists also increments statsPuts on success
+	if stats.Puts != 2 { // Initial Put + SetIfNotExists success
+		t.Errorf("Expected 2 puts, got %d", stats.Puts)
+	}
+}
+
+// Benchmarks for CAS operations
+
+func BenchmarkMemoryStore_GetWithVersion(b *testing.B) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Prepare data
+	for i := 0; i < 10000; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		store.Put(ctx, key, []byte("value"))
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("key-%d", i%10000)
+		store.GetWithVersion(ctx, key)
+	}
+}
+
+func BenchmarkMemoryStore_CompareAndSwap_Success(b *testing.B) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	store.Put(ctx, "counter", []byte("0"))
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, version, _ := store.GetWithVersion(ctx, "counter")
+		store.CompareAndSwap(ctx, "counter", version, []byte(fmt.Sprintf("%d", i)))
+	}
+}
+
+func BenchmarkMemoryStore_CompareAndSwap_Contention(b *testing.B) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	store.Put(ctx, "counter", []byte("0"))
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			for {
+				_, version, err := store.GetWithVersion(ctx, "counter")
+				if err != nil {
+					continue
+				}
+				_, success, _ := store.CompareAndSwap(ctx, "counter", version, []byte("x"))
+				if success {
+					break
+				}
+				// Retry on failure
+			}
+		}
+	})
+}
+
+func BenchmarkMemoryStore_SetIfNotExists(b *testing.B) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		store.SetIfNotExists(ctx, key, []byte("value"))
+	}
+}

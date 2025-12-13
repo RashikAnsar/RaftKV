@@ -23,6 +23,7 @@ const (
 	// Operation types
 	OpPut    = 0x01
 	OpDelete = 0x02
+	OpCAS    = 0x03 // Compare-And-Swap (Value contains: expectedVersion(8 bytes) + newValue)
 
 	// Size constants
 	walHeaderSize   = 32 // magic(2) + version(1) + op(1) + raftIndex(8) + raftTerm(8) + timestamp(8) + length(4)
@@ -227,7 +228,7 @@ func (w *WAL) serializeEntry(entry *WALEntry) ([]byte, error) {
 	valueLen := len(entry.Value)
 
 	dataSize := 4 + keyLen // key_len + key
-	if entry.Operation == OpPut {
+	if entry.Operation == OpPut || entry.Operation == OpCAS {
 		dataSize += 4 + valueLen // value_len + value
 	}
 
@@ -250,7 +251,7 @@ func (w *WAL) serializeEntry(entry *WALEntry) ([]byte, error) {
 	copy(buf[offset:offset+keyLen], entry.Key)
 	offset += keyLen
 
-	if entry.Operation == OpPut {
+	if entry.Operation == OpPut || entry.Operation == OpCAS {
 		binary.BigEndian.PutUint32(buf[offset:offset+4], uint32(valueLen))
 		offset += 4
 		copy(buf[offset:offset+valueLen], entry.Value)
@@ -393,7 +394,7 @@ func (w *WAL) readEntry(reader *bufio.Reader) (*WALEntry, error) {
 	entry.Key = string(data[offset : offset+int(keyLen)])
 	offset += int(keyLen)
 
-	if operation == OpPut {
+	if operation == OpPut || operation == OpCAS {
 		valueLen := binary.BigEndian.Uint32(data[offset : offset+4])
 		offset += 4
 		entry.Value = data[offset : offset+int(valueLen)]

@@ -19,12 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KVStore_Get_FullMethodName       = "/kvstore.KVStore/Get"
-	KVStore_Put_FullMethodName       = "/kvstore.KVStore/Put"
-	KVStore_Delete_FullMethodName    = "/kvstore.KVStore/Delete"
-	KVStore_List_FullMethodName      = "/kvstore.KVStore/List"
-	KVStore_GetStats_FullMethodName  = "/kvstore.KVStore/GetStats"
-	KVStore_GetLeader_FullMethodName = "/kvstore.KVStore/GetLeader"
+	KVStore_Get_FullMethodName            = "/kvstore.KVStore/Get"
+	KVStore_Put_FullMethodName            = "/kvstore.KVStore/Put"
+	KVStore_Delete_FullMethodName         = "/kvstore.KVStore/Delete"
+	KVStore_List_FullMethodName           = "/kvstore.KVStore/List"
+	KVStore_CompareAndSwap_FullMethodName = "/kvstore.KVStore/CompareAndSwap"
+	KVStore_GetWithVersion_FullMethodName = "/kvstore.KVStore/GetWithVersion"
+	KVStore_GetStats_FullMethodName       = "/kvstore.KVStore/GetStats"
+	KVStore_GetLeader_FullMethodName      = "/kvstore.KVStore/GetLeader"
 )
 
 // KVStoreClient is the client API for KVStore service.
@@ -41,6 +43,10 @@ type KVStoreClient interface {
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	// List returns keys matching a prefix
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
+	// CompareAndSwap atomically updates a key if the version matches
+	CompareAndSwap(ctx context.Context, in *CompareAndSwapRequest, opts ...grpc.CallOption) (*CompareAndSwapResponse, error)
+	// GetWithVersion retrieves the value and version for a key
+	GetWithVersion(ctx context.Context, in *GetWithVersionRequest, opts ...grpc.CallOption) (*GetWithVersionResponse, error)
 	// GetStats returns store statistics
 	GetStats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error)
 	// GetLeader returns the current Raft leader
@@ -95,6 +101,26 @@ func (c *kVStoreClient) List(ctx context.Context, in *ListRequest, opts ...grpc.
 	return out, nil
 }
 
+func (c *kVStoreClient) CompareAndSwap(ctx context.Context, in *CompareAndSwapRequest, opts ...grpc.CallOption) (*CompareAndSwapResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompareAndSwapResponse)
+	err := c.cc.Invoke(ctx, KVStore_CompareAndSwap_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kVStoreClient) GetWithVersion(ctx context.Context, in *GetWithVersionRequest, opts ...grpc.CallOption) (*GetWithVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWithVersionResponse)
+	err := c.cc.Invoke(ctx, KVStore_GetWithVersion_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *kVStoreClient) GetStats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatsResponse)
@@ -129,6 +155,10 @@ type KVStoreServer interface {
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	// List returns keys matching a prefix
 	List(context.Context, *ListRequest) (*ListResponse, error)
+	// CompareAndSwap atomically updates a key if the version matches
+	CompareAndSwap(context.Context, *CompareAndSwapRequest) (*CompareAndSwapResponse, error)
+	// GetWithVersion retrieves the value and version for a key
+	GetWithVersion(context.Context, *GetWithVersionRequest) (*GetWithVersionResponse, error)
 	// GetStats returns store statistics
 	GetStats(context.Context, *StatsRequest) (*StatsResponse, error)
 	// GetLeader returns the current Raft leader
@@ -154,6 +184,12 @@ func (UnimplementedKVStoreServer) Delete(context.Context, *DeleteRequest) (*Dele
 }
 func (UnimplementedKVStoreServer) List(context.Context, *ListRequest) (*ListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedKVStoreServer) CompareAndSwap(context.Context, *CompareAndSwapRequest) (*CompareAndSwapResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CompareAndSwap not implemented")
+}
+func (UnimplementedKVStoreServer) GetWithVersion(context.Context, *GetWithVersionRequest) (*GetWithVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWithVersion not implemented")
 }
 func (UnimplementedKVStoreServer) GetStats(context.Context, *StatsRequest) (*StatsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStats not implemented")
@@ -254,6 +290,42 @@ func _KVStore_List_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KVStore_CompareAndSwap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompareAndSwapRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).CompareAndSwap(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_CompareAndSwap_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).CompareAndSwap(ctx, req.(*CompareAndSwapRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KVStore_GetWithVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWithVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).GetWithVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_GetWithVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).GetWithVersion(ctx, req.(*GetWithVersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KVStore_GetStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(StatsRequest)
 	if err := dec(in); err != nil {
@@ -312,6 +384,14 @@ var KVStore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "List",
 			Handler:    _KVStore_List_Handler,
+		},
+		{
+			MethodName: "CompareAndSwap",
+			Handler:    _KVStore_CompareAndSwap_Handler,
+		},
+		{
+			MethodName: "GetWithVersion",
+			Handler:    _KVStore_GetWithVersion_Handler,
 		},
 		{
 			MethodName: "GetStats",

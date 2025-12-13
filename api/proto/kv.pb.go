@@ -701,6 +701,242 @@ func (x *LeaderResponse) GetIsLeader() bool {
 	return false
 }
 
+// CompareAndSwapRequest contains the CAS operation parameters
+type CompareAndSwapRequest struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Key             string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	ExpectedVersion uint64                 `protobuf:"varint,2,opt,name=expected_version,json=expectedVersion,proto3" json:"expected_version,omitempty"`
+	NewValue        []byte                 `protobuf:"bytes,3,opt,name=new_value,json=newValue,proto3" json:"new_value,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CompareAndSwapRequest) Reset() {
+	*x = CompareAndSwapRequest{}
+	mi := &file_api_proto_kv_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompareAndSwapRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompareAndSwapRequest) ProtoMessage() {}
+
+func (x *CompareAndSwapRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompareAndSwapRequest.ProtoReflect.Descriptor instead.
+func (*CompareAndSwapRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *CompareAndSwapRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *CompareAndSwapRequest) GetExpectedVersion() uint64 {
+	if x != nil {
+		return x.ExpectedVersion
+	}
+	return 0
+}
+
+func (x *CompareAndSwapRequest) GetNewValue() []byte {
+	if x != nil {
+		return x.NewValue
+	}
+	return nil
+}
+
+// CompareAndSwapResponse contains the CAS operation result
+type CompareAndSwapResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Success        bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	CurrentVersion uint64                 `protobuf:"varint,2,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"` // Current version (either old if failed, or new if succeeded)
+	Error          string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Leader         string                 `protobuf:"bytes,4,opt,name=leader,proto3" json:"leader,omitempty"` // The leader that processed the request
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CompareAndSwapResponse) Reset() {
+	*x = CompareAndSwapResponse{}
+	mi := &file_api_proto_kv_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompareAndSwapResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompareAndSwapResponse) ProtoMessage() {}
+
+func (x *CompareAndSwapResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompareAndSwapResponse.ProtoReflect.Descriptor instead.
+func (*CompareAndSwapResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *CompareAndSwapResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *CompareAndSwapResponse) GetCurrentVersion() uint64 {
+	if x != nil {
+		return x.CurrentVersion
+	}
+	return 0
+}
+
+func (x *CompareAndSwapResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *CompareAndSwapResponse) GetLeader() string {
+	if x != nil {
+		return x.Leader
+	}
+	return ""
+}
+
+// GetWithVersionRequest contains the key to retrieve with version
+type GetWithVersionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWithVersionRequest) Reset() {
+	*x = GetWithVersionRequest{}
+	mi := &file_api_proto_kv_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWithVersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWithVersionRequest) ProtoMessage() {}
+
+func (x *GetWithVersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWithVersionRequest.ProtoReflect.Descriptor instead.
+func (*GetWithVersionRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *GetWithVersionRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+// GetWithVersionResponse contains the retrieved value and version
+type GetWithVersionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         []byte                 `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	Version       uint64                 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
+	Found         bool                   `protobuf:"varint,3,opt,name=found,proto3" json:"found,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWithVersionResponse) Reset() {
+	*x = GetWithVersionResponse{}
+	mi := &file_api_proto_kv_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWithVersionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWithVersionResponse) ProtoMessage() {}
+
+func (x *GetWithVersionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWithVersionResponse.ProtoReflect.Descriptor instead.
+func (*GetWithVersionResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetWithVersionResponse) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *GetWithVersionResponse) GetVersion() uint64 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *GetWithVersionResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
 var File_api_proto_kv_proto protoreflect.FileDescriptor
 
 const file_api_proto_kv_proto_rawDesc = "" +
@@ -753,12 +989,29 @@ const file_api_proto_kv_proto_rawDesc = "" +
 	"\x0eLeaderResponse\x12\x1b\n" +
 	"\tleader_id\x18\x01 \x01(\tR\bleaderId\x12%\n" +
 	"\x0eleader_address\x18\x02 \x01(\tR\rleaderAddress\x12\x1b\n" +
-	"\tis_leader\x18\x03 \x01(\bR\bisLeader2\xd6\x02\n" +
+	"\tis_leader\x18\x03 \x01(\bR\bisLeader\"q\n" +
+	"\x15CompareAndSwapRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12)\n" +
+	"\x10expected_version\x18\x02 \x01(\x04R\x0fexpectedVersion\x12\x1b\n" +
+	"\tnew_value\x18\x03 \x01(\fR\bnewValue\"\x89\x01\n" +
+	"\x16CompareAndSwapResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12'\n" +
+	"\x0fcurrent_version\x18\x02 \x01(\x04R\x0ecurrentVersion\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x16\n" +
+	"\x06leader\x18\x04 \x01(\tR\x06leader\")\n" +
+	"\x15GetWithVersionRequest\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"^\n" +
+	"\x16GetWithVersionResponse\x12\x14\n" +
+	"\x05value\x18\x01 \x01(\fR\x05value\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x04R\aversion\x12\x14\n" +
+	"\x05found\x18\x03 \x01(\bR\x05found2\xfc\x03\n" +
 	"\aKVStore\x120\n" +
 	"\x03Get\x12\x13.kvstore.GetRequest\x1a\x14.kvstore.GetResponse\x120\n" +
 	"\x03Put\x12\x13.kvstore.PutRequest\x1a\x14.kvstore.PutResponse\x129\n" +
 	"\x06Delete\x12\x16.kvstore.DeleteRequest\x1a\x17.kvstore.DeleteResponse\x123\n" +
-	"\x04List\x12\x14.kvstore.ListRequest\x1a\x15.kvstore.ListResponse\x129\n" +
+	"\x04List\x12\x14.kvstore.ListRequest\x1a\x15.kvstore.ListResponse\x12Q\n" +
+	"\x0eCompareAndSwap\x12\x1e.kvstore.CompareAndSwapRequest\x1a\x1f.kvstore.CompareAndSwapResponse\x12Q\n" +
+	"\x0eGetWithVersion\x12\x1e.kvstore.GetWithVersionRequest\x1a\x1f.kvstore.GetWithVersionResponse\x129\n" +
 	"\bGetStats\x12\x15.kvstore.StatsRequest\x1a\x16.kvstore.StatsResponse\x12<\n" +
 	"\tGetLeader\x12\x16.kvstore.LeaderRequest\x1a\x17.kvstore.LeaderResponseB/Z-github.com/RashikAnsar/raftkv/api/proto;protob\x06proto3"
 
@@ -774,36 +1027,44 @@ func file_api_proto_kv_proto_rawDescGZIP() []byte {
 	return file_api_proto_kv_proto_rawDescData
 }
 
-var file_api_proto_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_api_proto_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_api_proto_kv_proto_goTypes = []any{
-	(*GetRequest)(nil),     // 0: kvstore.GetRequest
-	(*GetResponse)(nil),    // 1: kvstore.GetResponse
-	(*PutRequest)(nil),     // 2: kvstore.PutRequest
-	(*PutResponse)(nil),    // 3: kvstore.PutResponse
-	(*DeleteRequest)(nil),  // 4: kvstore.DeleteRequest
-	(*DeleteResponse)(nil), // 5: kvstore.DeleteResponse
-	(*ListRequest)(nil),    // 6: kvstore.ListRequest
-	(*ListResponse)(nil),   // 7: kvstore.ListResponse
-	(*StatsRequest)(nil),   // 8: kvstore.StatsRequest
-	(*StatsResponse)(nil),  // 9: kvstore.StatsResponse
-	(*LeaderRequest)(nil),  // 10: kvstore.LeaderRequest
-	(*LeaderResponse)(nil), // 11: kvstore.LeaderResponse
+	(*GetRequest)(nil),             // 0: kvstore.GetRequest
+	(*GetResponse)(nil),            // 1: kvstore.GetResponse
+	(*PutRequest)(nil),             // 2: kvstore.PutRequest
+	(*PutResponse)(nil),            // 3: kvstore.PutResponse
+	(*DeleteRequest)(nil),          // 4: kvstore.DeleteRequest
+	(*DeleteResponse)(nil),         // 5: kvstore.DeleteResponse
+	(*ListRequest)(nil),            // 6: kvstore.ListRequest
+	(*ListResponse)(nil),           // 7: kvstore.ListResponse
+	(*StatsRequest)(nil),           // 8: kvstore.StatsRequest
+	(*StatsResponse)(nil),          // 9: kvstore.StatsResponse
+	(*LeaderRequest)(nil),          // 10: kvstore.LeaderRequest
+	(*LeaderResponse)(nil),         // 11: kvstore.LeaderResponse
+	(*CompareAndSwapRequest)(nil),  // 12: kvstore.CompareAndSwapRequest
+	(*CompareAndSwapResponse)(nil), // 13: kvstore.CompareAndSwapResponse
+	(*GetWithVersionRequest)(nil),  // 14: kvstore.GetWithVersionRequest
+	(*GetWithVersionResponse)(nil), // 15: kvstore.GetWithVersionResponse
 }
 var file_api_proto_kv_proto_depIdxs = []int32{
 	0,  // 0: kvstore.KVStore.Get:input_type -> kvstore.GetRequest
 	2,  // 1: kvstore.KVStore.Put:input_type -> kvstore.PutRequest
 	4,  // 2: kvstore.KVStore.Delete:input_type -> kvstore.DeleteRequest
 	6,  // 3: kvstore.KVStore.List:input_type -> kvstore.ListRequest
-	8,  // 4: kvstore.KVStore.GetStats:input_type -> kvstore.StatsRequest
-	10, // 5: kvstore.KVStore.GetLeader:input_type -> kvstore.LeaderRequest
-	1,  // 6: kvstore.KVStore.Get:output_type -> kvstore.GetResponse
-	3,  // 7: kvstore.KVStore.Put:output_type -> kvstore.PutResponse
-	5,  // 8: kvstore.KVStore.Delete:output_type -> kvstore.DeleteResponse
-	7,  // 9: kvstore.KVStore.List:output_type -> kvstore.ListResponse
-	9,  // 10: kvstore.KVStore.GetStats:output_type -> kvstore.StatsResponse
-	11, // 11: kvstore.KVStore.GetLeader:output_type -> kvstore.LeaderResponse
-	6,  // [6:12] is the sub-list for method output_type
-	0,  // [0:6] is the sub-list for method input_type
+	12, // 4: kvstore.KVStore.CompareAndSwap:input_type -> kvstore.CompareAndSwapRequest
+	14, // 5: kvstore.KVStore.GetWithVersion:input_type -> kvstore.GetWithVersionRequest
+	8,  // 6: kvstore.KVStore.GetStats:input_type -> kvstore.StatsRequest
+	10, // 7: kvstore.KVStore.GetLeader:input_type -> kvstore.LeaderRequest
+	1,  // 8: kvstore.KVStore.Get:output_type -> kvstore.GetResponse
+	3,  // 9: kvstore.KVStore.Put:output_type -> kvstore.PutResponse
+	5,  // 10: kvstore.KVStore.Delete:output_type -> kvstore.DeleteResponse
+	7,  // 11: kvstore.KVStore.List:output_type -> kvstore.ListResponse
+	13, // 12: kvstore.KVStore.CompareAndSwap:output_type -> kvstore.CompareAndSwapResponse
+	15, // 13: kvstore.KVStore.GetWithVersion:output_type -> kvstore.GetWithVersionResponse
+	9,  // 14: kvstore.KVStore.GetStats:output_type -> kvstore.StatsResponse
+	11, // 15: kvstore.KVStore.GetLeader:output_type -> kvstore.LeaderResponse
+	8,  // [8:16] is the sub-list for method output_type
+	0,  // [0:8] is the sub-list for method input_type
 	0,  // [0:0] is the sub-list for extension type_name
 	0,  // [0:0] is the sub-list for extension extendee
 	0,  // [0:0] is the sub-list for field type_name
@@ -820,7 +1081,7 @@ func file_api_proto_kv_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_kv_proto_rawDesc), len(file_api_proto_kv_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

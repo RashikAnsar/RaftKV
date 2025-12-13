@@ -18,6 +18,12 @@ service KVStore {
   // List returns keys matching a prefix
   rpc List(ListRequest) returns (ListResponse);
 
+  // CompareAndSwap atomically updates a key if the version matches
+  rpc CompareAndSwap(CompareAndSwapRequest) returns (CompareAndSwapResponse);
+
+  // GetWithVersion retrieves the value and version for a key
+  rpc GetWithVersion(GetWithVersionRequest) returns (GetWithVersionResponse);
+
   // GetStats returns store statistics
   rpc GetStats(StatsRequest) returns (StatsResponse);
 
@@ -102,4 +108,31 @@ message LeaderResponse {
   string leader_id = 1;
   string leader_address = 2;
   bool is_leader = 3; // True if this node is the leader
+}
+
+// CompareAndSwapRequest contains the CAS operation parameters
+message CompareAndSwapRequest {
+  string key = 1;
+  uint64 expected_version = 2;
+  bytes new_value = 3;
+}
+
+// CompareAndSwapResponse contains the CAS operation result
+message CompareAndSwapResponse {
+  bool success = 1;
+  uint64 current_version = 2; // Current version (either old if failed, or new if succeeded)
+  string error = 3;
+  string leader = 4; // The leader that processed the request
+}
+
+// GetWithVersionRequest contains the key to retrieve with version
+message GetWithVersionRequest {
+  string key = 1;
+}
+
+// GetWithVersionResponse contains the retrieved value and version
+message GetWithVersionResponse {
+  bytes value = 1;
+  uint64 version = 2;
+  bool found = 3;
 }

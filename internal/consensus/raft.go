@@ -271,6 +271,12 @@ func (r *RaftNode) Get(ctx context.Context, key string) ([]byte, error) {
 	return r.fsm.store.Get(ctx, key)
 }
 
+// GetWithVersion retrieves both the value and version for a key
+func (r *RaftNode) GetWithVersion(ctx context.Context, key string) ([]byte, uint64, error) {
+	// Direct read from local store (may be stale on followers)
+	return r.fsm.store.GetWithVersion(ctx, key)
+}
+
 // List lists keys
 func (r *RaftNode) List(ctx context.Context, prefix string, limit int) ([]string, error) {
 	return r.fsm.store.List(ctx, prefix, limit)

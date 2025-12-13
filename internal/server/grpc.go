@@ -287,6 +287,77 @@ func (s *GRPCServer) List(ctx context.Context, req *pb.ListRequest) (*pb.ListRes
 	}, nil
 }
 
+// CompareAndSwap performs an atomic compare-and-swap operation
+func (s *GRPCServer) CompareAndSwap(ctx context.Context, req *pb.CompareAndSwapRequest) (*pb.CompareAndSwapResponse, error) {
+	// Check if we're the leader
+	if !s.raftNode.IsLeader() {
+		leaderAddr, _ := s.raftNode.GetLeader()
+		return &pb.CompareAndSwapResponse{
+			Success: false,
+			Error:   fmt.Sprintf("not leader, redirect to %s", leaderAddr),
+			Leader:  leaderAddr,
+		}, status.Error(codes.FailedPrecondition, "not leader")
+	}
+
+	// Create CAS command
+	cmd := consensus.Command{
+		Op:              consensus.OpTypeCAS,
+		Key:             req.Key,
+		Value:           req.NewValue,
+		ExpectedVersion: req.ExpectedVersion,
+	}
+
+	// Apply through Raft
+	if err := s.raftNode.Apply(cmd, 5*time.Second); err != nil {
+		s.logger.Error("Failed to apply CAS command",
+			zap.String("key", req.Key),
+			zap.Uint64("expected_version", req.ExpectedVersion),
+			zap.Error(err),
+		)
+		return &pb.CompareAndSwapResponse{
+			Success: false,
+			Error:   "failed to replicate command",
+		}, status.Error(codes.Internal, "failed to replicate command")
+	}
+
+	// Read back the current version to confirm
+	_, currentVersion, err := s.raftNode.GetWithVersion(ctx, req.Key)
+	if err != nil {
+		// CAS was applied but we can't read it back - still return success
+		// since the operation was committed to Raft
+		return &pb.CompareAndSwapResponse{
+			Success:        true,
+			CurrentVersion: req.ExpectedVersion + 1, // Assume version was incremented
+		}, nil
+	}
+
+	leaderAddr, _ := s.raftNode.GetLeader()
+	return &pb.CompareAndSwapResponse{
+		Success:        true,
+		CurrentVersion: currentVersion,
+		Leader:         leaderAddr,
+	}, nil
+}
+
+// GetWithVersion retrieves the value and version for a key
+func (s *GRPCServer) GetWithVersion(ctx context.Context, req *pb.GetWithVersionRequest) (*pb.GetWithVersionResponse, error) {
+	value, version, err := s.raftNode.GetWithVersion(ctx, req.Key)
+	if err != nil {
+		s.logger.Debug("Key not found in GetWithVersion",
+			zap.String("key", req.Key),
+		)
+		return &pb.GetWithVersionResponse{
+			Found: false,
+		}, nil
+	}
+
+	return &pb.GetWithVersionResponse{
+		Value:   value,
+		Version: version,
+		Found:   true,
+	}, nil
+}
+
 // GetStats returns store statistics
 func (s *GRPCServer) GetStats(ctx context.Context, req *pb.StatsRequest) (*pb.StatsResponse, error) {
 	stats := s.raftNode.Stats()

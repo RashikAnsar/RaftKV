@@ -23,10 +23,11 @@ type Snapshot struct {
 	RaftTerm  uint64 // Raft term at snapshot time
 
 	// Existing fields
-	Index     uint64            // WAL index at snapshot time
-	Timestamp time.Time         // When snapshot was taken
-	KeyCount  int64             // Number of keys
-	Data      map[string][]byte // All key-value pairs
+	Index     uint64               // WAL index at snapshot time
+	Timestamp time.Time            // When snapshot was taken
+	KeyCount  int64                // Number of keys
+	Data      map[string][]byte    // Deprecated: Use DataWithVersion instead
+	DataWithVersion map[string]*KeyValue // All key-value pairs with version info
 }
 
 type SnapshotMetadata struct {
@@ -64,7 +65,7 @@ func (sm *SnapshotManager) Create(index uint64, data map[string][]byte) error {
 	return sm.CreateWithRaftMetadata(index, data, 0, 0)
 }
 
-// CreateWithRaftMetadata creates a snapshot with Raft index and term
+// CreateWithRaftMetadata creates a snapshot with Raft index and term (legacy format)
 func (sm *SnapshotManager) CreateWithRaftMetadata(index uint64, data map[string][]byte, raftIndex, raftTerm uint64) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -76,6 +77,35 @@ func (sm *SnapshotManager) CreateWithRaftMetadata(index uint64, data map[string]
 		Timestamp: time.Now(),
 		KeyCount:  int64(len(data)),
 		Data:      data,
+	}
+
+	tempPath := sm.tempPath(index)
+	finalPath := sm.snapshotPath(index)
+
+	if err := sm.writeSnapshot(tempPath, snapshot); err != nil {
+		return fmt.Errorf("failed to write snapshot: %w", err)
+	}
+
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		os.Remove(tempPath) // Clean up temp file
+		return fmt.Errorf("failed to rename snapshot: %w", err)
+	}
+
+	return nil
+}
+
+// CreateWithRaftMetadataV2 creates a snapshot with version information
+func (sm *SnapshotManager) CreateWithRaftMetadataV2(index uint64, data map[string]*KeyValue, raftIndex, raftTerm uint64) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	snapshot := &Snapshot{
+		RaftIndex:       raftIndex,
+		RaftTerm:        raftTerm,
+		Index:           index,
+		Timestamp:       time.Now(),
+		KeyCount:        int64(len(data)),
+		DataWithVersion: data,
 	}
 
 	tempPath := sm.tempPath(index)

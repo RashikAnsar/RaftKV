@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -160,6 +161,96 @@ func (s *MemoryStore) List(ctx context.Context, prefix string, limit int) ([]str
 	}
 
 	return keys, nil
+}
+
+// ListWithOptions performs a filtered and paginated list operation
+func (s *MemoryStore) ListWithOptions(ctx context.Context, opts ListOptions) (*ListResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if s.closed.Load() {
+		return nil, ErrStoreClosed
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect all keys matching the filters
+	allKeys := make([]string, 0)
+	for key := range s.data {
+		// Check context periodically for large datasets
+		if len(allKeys)%1000 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
+
+		// Apply prefix filter
+		if opts.Prefix != "" && !strings.HasPrefix(key, opts.Prefix) {
+			continue
+		}
+
+		// Apply range filter (Start/End)
+		if opts.Start != "" && key < opts.Start {
+			continue
+		}
+		if opts.End != "" && key > opts.End {
+			continue
+		}
+
+		allKeys = append(allKeys, key)
+	}
+
+	// Sort keys
+	if opts.Reverse {
+		// Sort in descending order
+		sort.Slice(allKeys, func(i, j int) bool {
+			return allKeys[i] > allKeys[j]
+		})
+	} else {
+		// Sort in ascending order
+		sort.Strings(allKeys)
+	}
+
+	// Apply cursor (skip keys up to and including cursor)
+	startIdx := 0
+	if opts.Cursor != "" {
+		for i, key := range allKeys {
+			if key == opts.Cursor {
+				startIdx = i + 1
+				break
+			}
+		}
+	}
+
+	// Apply limit and determine if there are more results
+	endIdx := len(allKeys)
+	hasMore := false
+	if opts.Limit > 0 && startIdx+opts.Limit < len(allKeys) {
+		endIdx = startIdx + opts.Limit
+		hasMore = true
+	}
+
+	// Extract the page of keys
+	var pageKeys []string
+	if startIdx < len(allKeys) {
+		pageKeys = allKeys[startIdx:endIdx]
+	} else {
+		pageKeys = []string{}
+	}
+
+	// Determine next cursor
+	nextCursor := ""
+	if hasMore && len(pageKeys) > 0 {
+		nextCursor = pageKeys[len(pageKeys)-1]
+	}
+
+	return &ListResult{
+		Keys:       pageKeys,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}, nil
 }
 
 func (s *MemoryStore) Snapshot(ctx context.Context) (string, error) {

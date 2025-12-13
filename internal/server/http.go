@@ -267,17 +267,31 @@ func (s *HTTPServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleList lists keys by prefix
+// handleList lists keys by prefix with pagination support
 func (s *HTTPServer) handleList(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
 	prefix := r.URL.Query().Get("prefix")
-	limit := 1000 // Default limit
+	start := r.URL.Query().Get("start")
+	end := r.URL.Query().Get("end")
+	cursor := r.URL.Query().Get("cursor")
+	reverse := r.URL.Query().Get("reverse") == "true"
 
-	// Parse limit from query
+	limit := 100 // Default limit
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		fmt.Sscanf(limitStr, "%d", &limit)
 	}
 
-	keys, err := s.store.List(r.Context(), prefix, limit)
+	// Use the new ListWithOptions API
+	opts := storage.ListOptions{
+		Prefix:  prefix,
+		Start:   start,
+		End:     end,
+		Limit:   limit,
+		Cursor:  cursor,
+		Reverse: reverse,
+	}
+
+	result, err := s.store.ListWithOptions(r.Context(), opts)
 	if err != nil {
 		s.logger.Error("Failed to list keys",
 			zap.String("prefix", prefix),
@@ -287,12 +301,33 @@ func (s *HTTPServer) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.respondJSON(w, http.StatusOK, map[string]interface{}{
-		"keys":   keys,
-		"count":  len(keys),
-		"prefix": prefix,
-		"limit":  limit,
-	})
+	response := map[string]interface{}{
+		"keys":     result.Keys,
+		"count":    len(result.Keys),
+		"has_more": result.HasMore,
+	}
+
+	// Include cursor if there are more results
+	if result.HasMore && result.NextCursor != "" {
+		response["next_cursor"] = result.NextCursor
+	}
+
+	// Include query parameters in response for clarity
+	if prefix != "" {
+		response["prefix"] = prefix
+	}
+	if start != "" {
+		response["start"] = start
+	}
+	if end != "" {
+		response["end"] = end
+	}
+	if reverse {
+		response["reverse"] = true
+	}
+	response["limit"] = limit
+
+	s.respondJSON(w, http.StatusOK, response)
 }
 
 // handleSnapshot triggers a manual snapshot

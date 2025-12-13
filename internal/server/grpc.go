@@ -16,6 +16,7 @@ import (
 	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
+	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
 // GRPCServer implements the KVStore gRPC service
@@ -270,9 +271,22 @@ func (s *GRPCServer) List(ctx context.Context, req *pb.ListRequest) (*pb.ListRes
 		}
 	}()
 
-	// Perform list operation
+	// Use the enhanced ListWithOptions API
 	limit := int(req.Limit)
-	keys, err := s.raftNode.List(ctx, req.Prefix, limit)
+	if limit == 0 {
+		limit = 100 // Default limit
+	}
+
+	opts := storage.ListOptions{
+		Prefix:  req.Prefix,
+		Start:   req.Start,
+		End:     req.End,
+		Limit:   limit,
+		Cursor:  req.Cursor,
+		Reverse: req.Reverse,
+	}
+
+	result, err := s.raftNode.ListWithOptions(ctx, opts)
 	if err != nil {
 		s.logger.Error("Failed to list keys",
 			zap.String("prefix", req.Prefix),
@@ -282,8 +296,11 @@ func (s *GRPCServer) List(ctx context.Context, req *pb.ListRequest) (*pb.ListRes
 	}
 
 	return &pb.ListResponse{
-		Keys:  keys,
-		Total: int32(len(keys)),
+		Keys:       result.Keys,
+		Total:      int32(len(result.Keys)), // Deprecated, use Count
+		Count:      int32(len(result.Keys)),
+		HasMore:    result.HasMore,
+		NextCursor: result.NextCursor,
 	}, nil
 }
 

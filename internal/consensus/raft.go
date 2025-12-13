@@ -282,6 +282,11 @@ func (r *RaftNode) List(ctx context.Context, prefix string, limit int) ([]string
 	return r.fsm.store.List(ctx, prefix, limit)
 }
 
+// ListWithOptions performs a filtered and paginated list operation
+func (r *RaftNode) ListWithOptions(ctx context.Context, opts storage.ListOptions) (*storage.ListResult, error) {
+	return r.fsm.store.ListWithOptions(ctx, opts)
+}
+
 // Stats returns store statistics
 func (r *RaftNode) Stats() storage.Stats {
 	return r.fsm.store.Stats()

@@ -75,14 +75,21 @@ message DeleteResponse {
 
 // ListRequest contains parameters for listing keys
 message ListRequest {
-  string prefix = 1;
-  int32 limit = 2; // Max number of keys to return (0 = all)
+  string prefix = 1;              // Filter keys by prefix
+  int32 limit = 2;                // Max number of keys to return (0 = unlimited, default: 100)
+  string start = 3;               // Start of key range (inclusive, optional)
+  string end = 4;                 // End of key range (inclusive, optional)
+  string cursor = 5;              // Pagination cursor from previous response
+  bool reverse = 6;               // Return keys in descending order
 }
 
 // ListResponse contains the matching keys
 message ListResponse {
-  repeated string keys = 1;
-  int32 total = 2; // Total matching keys (may be > len(keys) if limited)
+  repeated string keys = 1;       // Keys matching the query
+  int32 total = 2;                // Number of keys in this response (deprecated, use count)
+  int32 count = 3;                // Number of keys in this response
+  bool has_more = 4;              // True if there are more results
+  string next_cursor = 5;         // Cursor for next page (empty if no more results)
 }
 
 // StatsRequest requests store statistics

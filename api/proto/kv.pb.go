@@ -362,8 +362,12 @@ func (x *DeleteResponse) GetLeader() string {
 // ListRequest contains parameters for listing keys
 type ListRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"` // Max number of keys to return (0 = all)
+	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`    // Filter keys by prefix
+	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`     // Max number of keys to return (0 = unlimited, default: 100)
+	Start         string                 `protobuf:"bytes,3,opt,name=start,proto3" json:"start,omitempty"`      // Start of key range (inclusive, optional)
+	End           string                 `protobuf:"bytes,4,opt,name=end,proto3" json:"end,omitempty"`          // End of key range (inclusive, optional)
+	Cursor        string                 `protobuf:"bytes,5,opt,name=cursor,proto3" json:"cursor,omitempty"`    // Pagination cursor from previous response
+	Reverse       bool                   `protobuf:"varint,6,opt,name=reverse,proto3" json:"reverse,omitempty"` // Return keys in descending order
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -412,11 +416,42 @@ func (x *ListRequest) GetLimit() int32 {
 	return 0
 }
 
+func (x *ListRequest) GetStart() string {
+	if x != nil {
+		return x.Start
+	}
+	return ""
+}
+
+func (x *ListRequest) GetEnd() string {
+	if x != nil {
+		return x.End
+	}
+	return ""
+}
+
+func (x *ListRequest) GetCursor() string {
+	if x != nil {
+		return x.Cursor
+	}
+	return ""
+}
+
+func (x *ListRequest) GetReverse() bool {
+	if x != nil {
+		return x.Reverse
+	}
+	return false
+}
+
 // ListResponse contains the matching keys
 type ListResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`
-	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"` // Total matching keys (may be > len(keys) if limited)
+	Keys          []string               `protobuf:"bytes,1,rep,name=keys,proto3" json:"keys,omitempty"`                               // Keys matching the query
+	Total         int32                  `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`                            // Number of keys in this response (deprecated, use count)
+	Count         int32                  `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`                            // Number of keys in this response
+	HasMore       bool                   `protobuf:"varint,4,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`         // True if there are more results
+	NextCursor    string                 `protobuf:"bytes,5,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"` // Cursor for next page (empty if no more results)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -463,6 +498,27 @@ func (x *ListResponse) GetTotal() int32 {
 		return x.Total
 	}
 	return 0
+}
+
+func (x *ListResponse) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *ListResponse) GetHasMore() bool {
+	if x != nil {
+		return x.HasMore
+	}
+	return false
+}
+
+func (x *ListResponse) GetNextCursor() string {
+	if x != nil {
+		return x.NextCursor
+	}
+	return ""
 }
 
 // StatsRequest requests store statistics
@@ -966,13 +1022,21 @@ const file_api_proto_kv_proto_rawDesc = "" +
 	"\x0eDeleteResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x16\n" +
-	"\x06leader\x18\x03 \x01(\tR\x06leader\";\n" +
+	"\x06leader\x18\x03 \x01(\tR\x06leader\"\x95\x01\n" +
 	"\vListRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"8\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x14\n" +
+	"\x05start\x18\x03 \x01(\tR\x05start\x12\x10\n" +
+	"\x03end\x18\x04 \x01(\tR\x03end\x12\x16\n" +
+	"\x06cursor\x18\x05 \x01(\tR\x06cursor\x12\x18\n" +
+	"\areverse\x18\x06 \x01(\bR\areverse\"\x8a\x01\n" +
 	"\fListResponse\x12\x12\n" +
 	"\x04keys\x18\x01 \x03(\tR\x04keys\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\"\x0e\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\x12\x14\n" +
+	"\x05count\x18\x03 \x01(\x05R\x05count\x12\x19\n" +
+	"\bhas_more\x18\x04 \x01(\bR\ahasMore\x12\x1f\n" +
+	"\vnext_cursor\x18\x05 \x01(\tR\n" +
+	"nextCursor\"\x0e\n" +
 	"\fStatsRequest\"\x8e\x02\n" +
 	"\rStatsResponse\x12\x1b\n" +
 	"\tkey_count\x18\x01 \x01(\x04R\bkeyCount\x12\x1b\n" +

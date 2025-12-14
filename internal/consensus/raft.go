@@ -22,13 +22,15 @@ import (
 )
 
 type RaftNode struct {
-	raft      *raft.Raft
-	fsm       *FSM
-	transport *raft.NetworkTransport
-	config    *raft.Config
-	logger    *zap.Logger
-	NodeID    string // Node ID (exported for testing)
-	RaftAddr  string // Raft address (exported for testing)
+	raft              *raft.Raft
+	fsm               *FSM
+	transport         *raft.NetworkTransport
+	config            *raft.Config
+	logger            *zap.Logger
+	NodeID            string // Node ID (exported for testing)
+	RaftAddr          string // Raft address (exported for testing)
+	leadershipManager *LeadershipManager // Leadership tracking and management
+	leadershipStopCh  chan struct{} // Channel to stop leadership tracking
 }
 
 type RaftConfig struct {
@@ -142,15 +144,22 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 		return nil, fmt.Errorf("failed to create raft: %w", err)
 	}
 
+	// Create leadership manager
+	leadershipManager := NewLeadershipManager(ra, config.NodeID, config.Logger)
+
 	node := &RaftNode{
-		raft:      ra,
-		fsm:       fsm,
-		transport: transport,
-		config:    raftConfig,
-		logger:    config.Logger,
-		NodeID:    config.NodeID,
-		RaftAddr:  config.RaftAddr,
+		raft:              ra,
+		fsm:               fsm,
+		transport:         transport,
+		config:            raftConfig,
+		logger:            config.Logger,
+		NodeID:            config.NodeID,
+		RaftAddr:          config.RaftAddr,
+		leadershipManager: leadershipManager,
 	}
+
+	// Start leadership tracking (check every 500ms)
+	node.leadershipStopCh = leadershipManager.StartLeadershipTracking(500 * time.Millisecond)
 
 	// Bootstrap cluster if this is the first node
 	if config.Bootstrap {
@@ -400,6 +409,11 @@ func (r *RaftNode) Snapshot() error {
 func (r *RaftNode) Shutdown() error {
 	r.logger.Info("Shutting down Raft node")
 
+	// Stop leadership tracking
+	if r.leadershipStopCh != nil {
+		close(r.leadershipStopCh)
+	}
+
 	future := r.raft.Shutdown()
 	if err := future.Error(); err != nil {
 		return fmt.Errorf("failed to shutdown raft: %w", err)
@@ -415,6 +429,26 @@ func (r *RaftNode) Shutdown() error {
 // RaftStats returns Raft-specific statistics
 func (r *RaftNode) RaftStats() map[string]string {
 	return r.raft.Stats()
+}
+
+// GetLeadershipInfo returns detailed leadership information
+func (r *RaftNode) GetLeadershipInfo() (*LeadershipInfo, error) {
+	return r.leadershipManager.GetLeadershipInfo()
+}
+
+// Stepdown forces the leader to step down (only works if this node is the leader)
+func (r *RaftNode) Stepdown() error {
+	return r.leadershipManager.Stepdown()
+}
+
+// TransferLeadership transfers leadership to a specific node
+func (r *RaftNode) TransferLeadership(targetNodeID string) error {
+	return r.leadershipManager.TransferLeadership(targetNodeID)
+}
+
+// GetElectionHistory returns the history of leadership changes
+func (r *RaftNode) GetElectionHistory() []ElectionEvent {
+	return r.leadershipManager.GetElectionHistory()
 }
 
 // hcLogger adapts zap.Logger to hashicorp/go-hclog.Logger

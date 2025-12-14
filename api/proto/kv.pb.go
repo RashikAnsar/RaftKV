@@ -993,6 +993,576 @@ func (x *GetWithVersionResponse) GetFound() bool {
 	return false
 }
 
+// LeadershipInfoRequest requests detailed leadership information
+type LeadershipInfoRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LeadershipInfoRequest) Reset() {
+	*x = LeadershipInfoRequest{}
+	mi := &file_api_proto_kv_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LeadershipInfoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeadershipInfoRequest) ProtoMessage() {}
+
+func (x *LeadershipInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeadershipInfoRequest.ProtoReflect.Descriptor instead.
+func (*LeadershipInfoRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{16}
+}
+
+// LeadershipInfoResponse contains detailed leadership information
+type LeadershipInfoResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Current node information
+	NodeId   string `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	IsLeader bool   `protobuf:"varint,2,opt,name=is_leader,json=isLeader,proto3" json:"is_leader,omitempty"`
+	State    string `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"` // "leader", "follower", "candidate", "shutdown"
+	// Leader information
+	LeaderId      string `protobuf:"bytes,4,opt,name=leader_id,json=leaderId,proto3" json:"leader_id,omitempty"`
+	LeaderAddress string `protobuf:"bytes,5,opt,name=leader_address,json=leaderAddress,proto3" json:"leader_address,omitempty"`
+	// Raft state information
+	Term          uint64 `protobuf:"varint,6,opt,name=term,proto3" json:"term,omitempty"`
+	LastContactMs int64  `protobuf:"varint,7,opt,name=last_contact_ms,json=lastContactMs,proto3" json:"last_contact_ms,omitempty"` // Milliseconds since last contact with leader (for followers)
+	CommitIndex   uint64 `protobuf:"varint,8,opt,name=commit_index,json=commitIndex,proto3" json:"commit_index,omitempty"`         // Last committed index
+	AppliedIndex  uint64 `protobuf:"varint,9,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`      // Last applied index
+	LastLogIndex  uint64 `protobuf:"varint,10,opt,name=last_log_index,json=lastLogIndex,proto3" json:"last_log_index,omitempty"`   // Index of last log entry
+	LastLogTerm   uint64 `protobuf:"varint,11,opt,name=last_log_term,json=lastLogTerm,proto3" json:"last_log_term,omitempty"`      // Term of last log entry
+	// Cluster information
+	NumPeers int32 `protobuf:"varint,12,opt,name=num_peers,json=numPeers,proto3" json:"num_peers,omitempty"` // Number of peers in cluster
+	// Leadership stability
+	LeadershipChanges int32 `protobuf:"varint,13,opt,name=leadership_changes,json=leadershipChanges,proto3" json:"leadership_changes,omitempty"`   // Number of leadership changes
+	LeaderStabilityMs int64 `protobuf:"varint,14,opt,name=leader_stability_ms,json=leaderStabilityMs,proto3" json:"leader_stability_ms,omitempty"` // How long current leader has been in office (milliseconds)
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *LeadershipInfoResponse) Reset() {
+	*x = LeadershipInfoResponse{}
+	mi := &file_api_proto_kv_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LeadershipInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeadershipInfoResponse) ProtoMessage() {}
+
+func (x *LeadershipInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeadershipInfoResponse.ProtoReflect.Descriptor instead.
+func (*LeadershipInfoResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *LeadershipInfoResponse) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *LeadershipInfoResponse) GetIsLeader() bool {
+	if x != nil {
+		return x.IsLeader
+	}
+	return false
+}
+
+func (x *LeadershipInfoResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *LeadershipInfoResponse) GetLeaderId() string {
+	if x != nil {
+		return x.LeaderId
+	}
+	return ""
+}
+
+func (x *LeadershipInfoResponse) GetLeaderAddress() string {
+	if x != nil {
+		return x.LeaderAddress
+	}
+	return ""
+}
+
+func (x *LeadershipInfoResponse) GetTerm() uint64 {
+	if x != nil {
+		return x.Term
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetLastContactMs() int64 {
+	if x != nil {
+		return x.LastContactMs
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetCommitIndex() uint64 {
+	if x != nil {
+		return x.CommitIndex
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetAppliedIndex() uint64 {
+	if x != nil {
+		return x.AppliedIndex
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetLastLogIndex() uint64 {
+	if x != nil {
+		return x.LastLogIndex
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetLastLogTerm() uint64 {
+	if x != nil {
+		return x.LastLogTerm
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetNumPeers() int32 {
+	if x != nil {
+		return x.NumPeers
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetLeadershipChanges() int32 {
+	if x != nil {
+		return x.LeadershipChanges
+	}
+	return 0
+}
+
+func (x *LeadershipInfoResponse) GetLeaderStabilityMs() int64 {
+	if x != nil {
+		return x.LeaderStabilityMs
+	}
+	return 0
+}
+
+// StepdownRequest requests the leader to step down
+type StepdownRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepdownRequest) Reset() {
+	*x = StepdownRequest{}
+	mi := &file_api_proto_kv_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepdownRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepdownRequest) ProtoMessage() {}
+
+func (x *StepdownRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepdownRequest.ProtoReflect.Descriptor instead.
+func (*StepdownRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{18}
+}
+
+// StepdownResponse confirms the stepdown operation
+type StepdownResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StepdownResponse) Reset() {
+	*x = StepdownResponse{}
+	mi := &file_api_proto_kv_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StepdownResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StepdownResponse) ProtoMessage() {}
+
+func (x *StepdownResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StepdownResponse.ProtoReflect.Descriptor instead.
+func (*StepdownResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *StepdownResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *StepdownResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *StepdownResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+// TransferLeadershipRequest requests leadership transfer to a specific node
+type TransferLeadershipRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetNodeId  string                 `protobuf:"bytes,1,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransferLeadershipRequest) Reset() {
+	*x = TransferLeadershipRequest{}
+	mi := &file_api_proto_kv_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransferLeadershipRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransferLeadershipRequest) ProtoMessage() {}
+
+func (x *TransferLeadershipRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransferLeadershipRequest.ProtoReflect.Descriptor instead.
+func (*TransferLeadershipRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *TransferLeadershipRequest) GetTargetNodeId() string {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return ""
+}
+
+// TransferLeadershipResponse confirms the leadership transfer operation
+type TransferLeadershipResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	TargetNodeId  string                 `protobuf:"bytes,4,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TransferLeadershipResponse) Reset() {
+	*x = TransferLeadershipResponse{}
+	mi := &file_api_proto_kv_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TransferLeadershipResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TransferLeadershipResponse) ProtoMessage() {}
+
+func (x *TransferLeadershipResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TransferLeadershipResponse.ProtoReflect.Descriptor instead.
+func (*TransferLeadershipResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *TransferLeadershipResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *TransferLeadershipResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *TransferLeadershipResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *TransferLeadershipResponse) GetTargetNodeId() string {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return ""
+}
+
+// ElectionHistoryRequest requests the election history
+type ElectionHistoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ElectionHistoryRequest) Reset() {
+	*x = ElectionHistoryRequest{}
+	mi := &file_api_proto_kv_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ElectionHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ElectionHistoryRequest) ProtoMessage() {}
+
+func (x *ElectionHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ElectionHistoryRequest.ProtoReflect.Descriptor instead.
+func (*ElectionHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{22}
+}
+
+// ElectionEvent represents a single leadership change event
+type ElectionEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TimestampMs   int64                  `protobuf:"varint,1,opt,name=timestamp_ms,json=timestampMs,proto3" json:"timestamp_ms,omitempty"` // Unix timestamp in milliseconds
+	OldLeaderId   string                 `protobuf:"bytes,2,opt,name=old_leader_id,json=oldLeaderId,proto3" json:"old_leader_id,omitempty"`
+	NewLeaderId   string                 `protobuf:"bytes,3,opt,name=new_leader_id,json=newLeaderId,proto3" json:"new_leader_id,omitempty"`
+	Term          uint64                 `protobuf:"varint,4,opt,name=term,proto3" json:"term,omitempty"`
+	Reason        string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"` // "election", "stepdown", "transfer", etc.
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ElectionEvent) Reset() {
+	*x = ElectionEvent{}
+	mi := &file_api_proto_kv_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ElectionEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ElectionEvent) ProtoMessage() {}
+
+func (x *ElectionEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ElectionEvent.ProtoReflect.Descriptor instead.
+func (*ElectionEvent) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ElectionEvent) GetTimestampMs() int64 {
+	if x != nil {
+		return x.TimestampMs
+	}
+	return 0
+}
+
+func (x *ElectionEvent) GetOldLeaderId() string {
+	if x != nil {
+		return x.OldLeaderId
+	}
+	return ""
+}
+
+func (x *ElectionEvent) GetNewLeaderId() string {
+	if x != nil {
+		return x.NewLeaderId
+	}
+	return ""
+}
+
+func (x *ElectionEvent) GetTerm() uint64 {
+	if x != nil {
+		return x.Term
+	}
+	return 0
+}
+
+func (x *ElectionEvent) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// ElectionHistoryResponse contains the election history
+type ElectionHistoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Elections     []*ElectionEvent       `protobuf:"bytes,1,rep,name=elections,proto3" json:"elections,omitempty"`
+	Count         int32                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ElectionHistoryResponse) Reset() {
+	*x = ElectionHistoryResponse{}
+	mi := &file_api_proto_kv_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ElectionHistoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ElectionHistoryResponse) ProtoMessage() {}
+
+func (x *ElectionHistoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_kv_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ElectionHistoryResponse.ProtoReflect.Descriptor instead.
+func (*ElectionHistoryResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_kv_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ElectionHistoryResponse) GetElections() []*ElectionEvent {
+	if x != nil {
+		return x.Elections
+	}
+	return nil
+}
+
+func (x *ElectionHistoryResponse) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
 var File_api_proto_kv_proto protoreflect.FileDescriptor
 
 const file_api_proto_kv_proto_rawDesc = "" +
@@ -1068,7 +1638,46 @@ const file_api_proto_kv_proto_rawDesc = "" +
 	"\x16GetWithVersionResponse\x12\x14\n" +
 	"\x05value\x18\x01 \x01(\fR\x05value\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x04R\aversion\x12\x14\n" +
-	"\x05found\x18\x03 \x01(\bR\x05found2\xfc\x03\n" +
+	"\x05found\x18\x03 \x01(\bR\x05found\"\x17\n" +
+	"\x15LeadershipInfoRequest\"\xf2\x03\n" +
+	"\x16LeadershipInfoResponse\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1b\n" +
+	"\tis_leader\x18\x02 \x01(\bR\bisLeader\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12\x1b\n" +
+	"\tleader_id\x18\x04 \x01(\tR\bleaderId\x12%\n" +
+	"\x0eleader_address\x18\x05 \x01(\tR\rleaderAddress\x12\x12\n" +
+	"\x04term\x18\x06 \x01(\x04R\x04term\x12&\n" +
+	"\x0flast_contact_ms\x18\a \x01(\x03R\rlastContactMs\x12!\n" +
+	"\fcommit_index\x18\b \x01(\x04R\vcommitIndex\x12#\n" +
+	"\rapplied_index\x18\t \x01(\x04R\fappliedIndex\x12$\n" +
+	"\x0elast_log_index\x18\n" +
+	" \x01(\x04R\flastLogIndex\x12\"\n" +
+	"\rlast_log_term\x18\v \x01(\x04R\vlastLogTerm\x12\x1b\n" +
+	"\tnum_peers\x18\f \x01(\x05R\bnumPeers\x12-\n" +
+	"\x12leadership_changes\x18\r \x01(\x05R\x11leadershipChanges\x12.\n" +
+	"\x13leader_stability_ms\x18\x0e \x01(\x03R\x11leaderStabilityMs\"\x11\n" +
+	"\x0fStepdownRequest\"\\\n" +
+	"\x10StepdownResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"A\n" +
+	"\x19TransferLeadershipRequest\x12$\n" +
+	"\x0etarget_node_id\x18\x01 \x01(\tR\ftargetNodeId\"\x8c\x01\n" +
+	"\x1aTransferLeadershipResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12$\n" +
+	"\x0etarget_node_id\x18\x04 \x01(\tR\ftargetNodeId\"\x18\n" +
+	"\x16ElectionHistoryRequest\"\xa6\x01\n" +
+	"\rElectionEvent\x12!\n" +
+	"\ftimestamp_ms\x18\x01 \x01(\x03R\vtimestampMs\x12\"\n" +
+	"\rold_leader_id\x18\x02 \x01(\tR\voldLeaderId\x12\"\n" +
+	"\rnew_leader_id\x18\x03 \x01(\tR\vnewLeaderId\x12\x12\n" +
+	"\x04term\x18\x04 \x01(\x04R\x04term\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"e\n" +
+	"\x17ElectionHistoryResponse\x124\n" +
+	"\telections\x18\x01 \x03(\v2\x16.kvstore.ElectionEventR\telections\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count2\xcb\x06\n" +
 	"\aKVStore\x120\n" +
 	"\x03Get\x12\x13.kvstore.GetRequest\x1a\x14.kvstore.GetResponse\x120\n" +
 	"\x03Put\x12\x13.kvstore.PutRequest\x1a\x14.kvstore.PutResponse\x129\n" +
@@ -1077,7 +1686,11 @@ const file_api_proto_kv_proto_rawDesc = "" +
 	"\x0eCompareAndSwap\x12\x1e.kvstore.CompareAndSwapRequest\x1a\x1f.kvstore.CompareAndSwapResponse\x12Q\n" +
 	"\x0eGetWithVersion\x12\x1e.kvstore.GetWithVersionRequest\x1a\x1f.kvstore.GetWithVersionResponse\x129\n" +
 	"\bGetStats\x12\x15.kvstore.StatsRequest\x1a\x16.kvstore.StatsResponse\x12<\n" +
-	"\tGetLeader\x12\x16.kvstore.LeaderRequest\x1a\x17.kvstore.LeaderResponseB/Z-github.com/RashikAnsar/raftkv/api/proto;protob\x06proto3"
+	"\tGetLeader\x12\x16.kvstore.LeaderRequest\x1a\x17.kvstore.LeaderResponse\x12T\n" +
+	"\x11GetLeadershipInfo\x12\x1e.kvstore.LeadershipInfoRequest\x1a\x1f.kvstore.LeadershipInfoResponse\x12?\n" +
+	"\bStepdown\x12\x18.kvstore.StepdownRequest\x1a\x19.kvstore.StepdownResponse\x12]\n" +
+	"\x12TransferLeadership\x12\".kvstore.TransferLeadershipRequest\x1a#.kvstore.TransferLeadershipResponse\x12W\n" +
+	"\x12GetElectionHistory\x12\x1f.kvstore.ElectionHistoryRequest\x1a .kvstore.ElectionHistoryResponseB/Z-github.com/RashikAnsar/raftkv/api/proto;protob\x06proto3"
 
 var (
 	file_api_proto_kv_proto_rawDescOnce sync.Once
@@ -1091,47 +1704,65 @@ func file_api_proto_kv_proto_rawDescGZIP() []byte {
 	return file_api_proto_kv_proto_rawDescData
 }
 
-var file_api_proto_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_api_proto_kv_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_api_proto_kv_proto_goTypes = []any{
-	(*GetRequest)(nil),             // 0: kvstore.GetRequest
-	(*GetResponse)(nil),            // 1: kvstore.GetResponse
-	(*PutRequest)(nil),             // 2: kvstore.PutRequest
-	(*PutResponse)(nil),            // 3: kvstore.PutResponse
-	(*DeleteRequest)(nil),          // 4: kvstore.DeleteRequest
-	(*DeleteResponse)(nil),         // 5: kvstore.DeleteResponse
-	(*ListRequest)(nil),            // 6: kvstore.ListRequest
-	(*ListResponse)(nil),           // 7: kvstore.ListResponse
-	(*StatsRequest)(nil),           // 8: kvstore.StatsRequest
-	(*StatsResponse)(nil),          // 9: kvstore.StatsResponse
-	(*LeaderRequest)(nil),          // 10: kvstore.LeaderRequest
-	(*LeaderResponse)(nil),         // 11: kvstore.LeaderResponse
-	(*CompareAndSwapRequest)(nil),  // 12: kvstore.CompareAndSwapRequest
-	(*CompareAndSwapResponse)(nil), // 13: kvstore.CompareAndSwapResponse
-	(*GetWithVersionRequest)(nil),  // 14: kvstore.GetWithVersionRequest
-	(*GetWithVersionResponse)(nil), // 15: kvstore.GetWithVersionResponse
+	(*GetRequest)(nil),                 // 0: kvstore.GetRequest
+	(*GetResponse)(nil),                // 1: kvstore.GetResponse
+	(*PutRequest)(nil),                 // 2: kvstore.PutRequest
+	(*PutResponse)(nil),                // 3: kvstore.PutResponse
+	(*DeleteRequest)(nil),              // 4: kvstore.DeleteRequest
+	(*DeleteResponse)(nil),             // 5: kvstore.DeleteResponse
+	(*ListRequest)(nil),                // 6: kvstore.ListRequest
+	(*ListResponse)(nil),               // 7: kvstore.ListResponse
+	(*StatsRequest)(nil),               // 8: kvstore.StatsRequest
+	(*StatsResponse)(nil),              // 9: kvstore.StatsResponse
+	(*LeaderRequest)(nil),              // 10: kvstore.LeaderRequest
+	(*LeaderResponse)(nil),             // 11: kvstore.LeaderResponse
+	(*CompareAndSwapRequest)(nil),      // 12: kvstore.CompareAndSwapRequest
+	(*CompareAndSwapResponse)(nil),     // 13: kvstore.CompareAndSwapResponse
+	(*GetWithVersionRequest)(nil),      // 14: kvstore.GetWithVersionRequest
+	(*GetWithVersionResponse)(nil),     // 15: kvstore.GetWithVersionResponse
+	(*LeadershipInfoRequest)(nil),      // 16: kvstore.LeadershipInfoRequest
+	(*LeadershipInfoResponse)(nil),     // 17: kvstore.LeadershipInfoResponse
+	(*StepdownRequest)(nil),            // 18: kvstore.StepdownRequest
+	(*StepdownResponse)(nil),           // 19: kvstore.StepdownResponse
+	(*TransferLeadershipRequest)(nil),  // 20: kvstore.TransferLeadershipRequest
+	(*TransferLeadershipResponse)(nil), // 21: kvstore.TransferLeadershipResponse
+	(*ElectionHistoryRequest)(nil),     // 22: kvstore.ElectionHistoryRequest
+	(*ElectionEvent)(nil),              // 23: kvstore.ElectionEvent
+	(*ElectionHistoryResponse)(nil),    // 24: kvstore.ElectionHistoryResponse
 }
 var file_api_proto_kv_proto_depIdxs = []int32{
-	0,  // 0: kvstore.KVStore.Get:input_type -> kvstore.GetRequest
-	2,  // 1: kvstore.KVStore.Put:input_type -> kvstore.PutRequest
-	4,  // 2: kvstore.KVStore.Delete:input_type -> kvstore.DeleteRequest
-	6,  // 3: kvstore.KVStore.List:input_type -> kvstore.ListRequest
-	12, // 4: kvstore.KVStore.CompareAndSwap:input_type -> kvstore.CompareAndSwapRequest
-	14, // 5: kvstore.KVStore.GetWithVersion:input_type -> kvstore.GetWithVersionRequest
-	8,  // 6: kvstore.KVStore.GetStats:input_type -> kvstore.StatsRequest
-	10, // 7: kvstore.KVStore.GetLeader:input_type -> kvstore.LeaderRequest
-	1,  // 8: kvstore.KVStore.Get:output_type -> kvstore.GetResponse
-	3,  // 9: kvstore.KVStore.Put:output_type -> kvstore.PutResponse
-	5,  // 10: kvstore.KVStore.Delete:output_type -> kvstore.DeleteResponse
-	7,  // 11: kvstore.KVStore.List:output_type -> kvstore.ListResponse
-	13, // 12: kvstore.KVStore.CompareAndSwap:output_type -> kvstore.CompareAndSwapResponse
-	15, // 13: kvstore.KVStore.GetWithVersion:output_type -> kvstore.GetWithVersionResponse
-	9,  // 14: kvstore.KVStore.GetStats:output_type -> kvstore.StatsResponse
-	11, // 15: kvstore.KVStore.GetLeader:output_type -> kvstore.LeaderResponse
-	8,  // [8:16] is the sub-list for method output_type
-	0,  // [0:8] is the sub-list for method input_type
-	0,  // [0:0] is the sub-list for extension type_name
-	0,  // [0:0] is the sub-list for extension extendee
-	0,  // [0:0] is the sub-list for field type_name
+	23, // 0: kvstore.ElectionHistoryResponse.elections:type_name -> kvstore.ElectionEvent
+	0,  // 1: kvstore.KVStore.Get:input_type -> kvstore.GetRequest
+	2,  // 2: kvstore.KVStore.Put:input_type -> kvstore.PutRequest
+	4,  // 3: kvstore.KVStore.Delete:input_type -> kvstore.DeleteRequest
+	6,  // 4: kvstore.KVStore.List:input_type -> kvstore.ListRequest
+	12, // 5: kvstore.KVStore.CompareAndSwap:input_type -> kvstore.CompareAndSwapRequest
+	14, // 6: kvstore.KVStore.GetWithVersion:input_type -> kvstore.GetWithVersionRequest
+	8,  // 7: kvstore.KVStore.GetStats:input_type -> kvstore.StatsRequest
+	10, // 8: kvstore.KVStore.GetLeader:input_type -> kvstore.LeaderRequest
+	16, // 9: kvstore.KVStore.GetLeadershipInfo:input_type -> kvstore.LeadershipInfoRequest
+	18, // 10: kvstore.KVStore.Stepdown:input_type -> kvstore.StepdownRequest
+	20, // 11: kvstore.KVStore.TransferLeadership:input_type -> kvstore.TransferLeadershipRequest
+	22, // 12: kvstore.KVStore.GetElectionHistory:input_type -> kvstore.ElectionHistoryRequest
+	1,  // 13: kvstore.KVStore.Get:output_type -> kvstore.GetResponse
+	3,  // 14: kvstore.KVStore.Put:output_type -> kvstore.PutResponse
+	5,  // 15: kvstore.KVStore.Delete:output_type -> kvstore.DeleteResponse
+	7,  // 16: kvstore.KVStore.List:output_type -> kvstore.ListResponse
+	13, // 17: kvstore.KVStore.CompareAndSwap:output_type -> kvstore.CompareAndSwapResponse
+	15, // 18: kvstore.KVStore.GetWithVersion:output_type -> kvstore.GetWithVersionResponse
+	9,  // 19: kvstore.KVStore.GetStats:output_type -> kvstore.StatsResponse
+	11, // 20: kvstore.KVStore.GetLeader:output_type -> kvstore.LeaderResponse
+	17, // 21: kvstore.KVStore.GetLeadershipInfo:output_type -> kvstore.LeadershipInfoResponse
+	19, // 22: kvstore.KVStore.Stepdown:output_type -> kvstore.StepdownResponse
+	21, // 23: kvstore.KVStore.TransferLeadership:output_type -> kvstore.TransferLeadershipResponse
+	24, // 24: kvstore.KVStore.GetElectionHistory:output_type -> kvstore.ElectionHistoryResponse
+	13, // [13:25] is the sub-list for method output_type
+	1,  // [1:13] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_api_proto_kv_proto_init() }
@@ -1145,7 +1776,7 @@ func file_api_proto_kv_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_kv_proto_rawDesc), len(file_api_proto_kv_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

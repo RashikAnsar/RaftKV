@@ -69,6 +69,12 @@ func (cs *CachedStore) List(ctx context.Context, prefix string, limit int) ([]st
 	return cs.store.List(ctx, prefix, limit)
 }
 
+// ListWithOptions performs a filtered and paginated list operation (bypasses cache)
+func (cs *CachedStore) ListWithOptions(ctx context.Context, opts ListOptions) (*ListResult, error) {
+	// List operations bypass cache (typically infrequent)
+	return cs.store.ListWithOptions(ctx, opts)
+}
+
 // Snapshot creates a snapshot of the underlying store
 func (cs *CachedStore) Snapshot(ctx context.Context) (string, error) {
 	return cs.store.Snapshot(ctx)

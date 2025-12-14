@@ -1018,3 +1018,372 @@ func BenchmarkMemoryStore_SetIfNotExists(b *testing.B) {
 		store.SetIfNotExists(ctx, key, []byte("value"))
 	}
 }
+
+// TestMemoryStore_ListWithOptions tests the enhanced list functionality
+func TestMemoryStore_ListWithOptions(t *testing.T) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Populate store with test data
+	testKeys := []string{
+		"apple", "apricot", "banana", "blueberry",
+		"cherry", "grape", "kiwi", "lemon",
+		"mango", "orange", "peach", "pear",
+		"plum", "strawberry", "watermelon",
+	}
+
+	for _, key := range testKeys {
+		if err := store.Put(ctx, key, []byte("value-"+key)); err != nil {
+			t.Fatalf("Failed to put key %s: %v", key, err)
+		}
+	}
+
+	t.Run("BasicPagination", func(t *testing.T) {
+		// Get first page
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Limit: 5,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		if len(result.Keys) != 5 {
+			t.Errorf("Expected 5 keys, got %d", len(result.Keys))
+		}
+
+		if !result.HasMore {
+			t.Errorf("Expected HasMore=true")
+		}
+
+		if result.NextCursor == "" {
+			t.Errorf("Expected non-empty NextCursor")
+		}
+
+		// Verify keys are sorted
+		expected := []string{"apple", "apricot", "banana", "blueberry", "cherry"}
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+
+		// Get second page using cursor
+		result2, err := store.ListWithOptions(ctx, ListOptions{
+			Limit:  5,
+			Cursor: result.NextCursor,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions with cursor failed: %v", err)
+		}
+
+		if len(result2.Keys) != 5 {
+			t.Errorf("Expected 5 keys in second page, got %d", len(result2.Keys))
+		}
+
+		expected2 := []string{"grape", "kiwi", "lemon", "mango", "orange"}
+		for i, key := range result2.Keys {
+			if key != expected2[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected2[i], i, key)
+			}
+		}
+	})
+
+	t.Run("PrefixFilter", func(t *testing.T) {
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Prefix: "b",
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		expected := []string{"banana", "blueberry"}
+		if len(result.Keys) != len(expected) {
+			t.Errorf("Expected %d keys, got %d", len(expected), len(result.Keys))
+		}
+
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+
+		if result.HasMore {
+			t.Errorf("Expected HasMore=false for filtered results")
+		}
+	})
+
+	t.Run("RangeQuery", func(t *testing.T) {
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Start: "cherry",
+			End:   "mango",
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		expected := []string{"cherry", "grape", "kiwi", "lemon", "mango"}
+		if len(result.Keys) != len(expected) {
+			t.Errorf("Expected %d keys, got %d", len(expected), len(result.Keys))
+		}
+
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+	})
+
+	t.Run("ReverseOrder", func(t *testing.T) {
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Reverse: true,
+			Limit:   5,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		// Keys should be in descending order
+		expected := []string{"watermelon", "strawberry", "plum", "pear", "peach"}
+		if len(result.Keys) != len(expected) {
+			t.Errorf("Expected %d keys, got %d", len(expected), len(result.Keys))
+		}
+
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+	})
+
+	t.Run("CombinedFilters", func(t *testing.T) {
+		// Prefix + Range + Limit
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Prefix: "p",
+			Start:  "pa",
+			End:    "pl",
+			Limit:  2,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		expected := []string{"peach", "pear"}
+		if len(result.Keys) != len(expected) {
+			t.Errorf("Expected %d keys, got %d", len(expected), len(result.Keys))
+		}
+
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+	})
+
+	t.Run("EmptyResults", func(t *testing.T) {
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Prefix: "xyz",
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		if len(result.Keys) != 0 {
+			t.Errorf("Expected 0 keys, got %d", len(result.Keys))
+		}
+
+		if result.HasMore {
+			t.Errorf("Expected HasMore=false for empty results")
+		}
+
+		if result.NextCursor != "" {
+			t.Errorf("Expected empty NextCursor for empty results")
+		}
+	})
+
+	t.Run("UnlimitedResults", func(t *testing.T) {
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Limit: 0, // Unlimited
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		if len(result.Keys) != len(testKeys) {
+			t.Errorf("Expected %d keys, got %d", len(testKeys), len(result.Keys))
+		}
+
+		if result.HasMore {
+			t.Errorf("Expected HasMore=false when all results fit")
+		}
+	})
+
+	t.Run("InvalidCursor", func(t *testing.T) {
+		// Cursor that doesn't exist should start from beginning
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Cursor: "nonexistent",
+			Limit:  5,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		// When cursor is not found, starts from beginning
+		if len(result.Keys) != 5 {
+			t.Errorf("Expected 5 keys (starting from beginning), got %d", len(result.Keys))
+		}
+
+		// Should still get the first 5 keys in sorted order
+		expected := []string{"apple", "apricot", "banana", "blueberry", "cherry"}
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+	})
+
+	t.Run("PaginationWithReverse", func(t *testing.T) {
+		// Get first page in reverse
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Reverse: true,
+			Limit:   3,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		expected := []string{"watermelon", "strawberry", "plum"}
+		if len(result.Keys) != len(expected) {
+			t.Errorf("Expected %d keys, got %d", len(expected), len(result.Keys))
+		}
+
+		for i, key := range result.Keys {
+			if key != expected[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected[i], i, key)
+			}
+		}
+
+		// Get next page with cursor in reverse
+		result2, err := store.ListWithOptions(ctx, ListOptions{
+			Reverse: true,
+			Limit:   3,
+			Cursor:  result.NextCursor,
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions with cursor failed: %v", err)
+		}
+
+		expected2 := []string{"pear", "peach", "orange"}
+		if len(result2.Keys) != len(expected2) {
+			t.Errorf("Expected %d keys, got %d", len(expected2), len(result2.Keys))
+		}
+
+		for i, key := range result2.Keys {
+			if key != expected2[i] {
+				t.Errorf("Expected key %s at position %d, got %s", expected2[i], i, key)
+			}
+		}
+	})
+
+	t.Run("ExactLimit", func(t *testing.T) {
+		// When results exactly match limit, HasMore should be false
+		result, err := store.ListWithOptions(ctx, ListOptions{
+			Limit: len(testKeys),
+		})
+		if err != nil {
+			t.Fatalf("ListWithOptions failed: %v", err)
+		}
+
+		if len(result.Keys) != len(testKeys) {
+			t.Errorf("Expected %d keys, got %d", len(testKeys), len(result.Keys))
+		}
+
+		if result.HasMore {
+			t.Errorf("Expected HasMore=false when all results fit exactly")
+		}
+
+		if result.NextCursor != "" {
+			t.Errorf("Expected empty NextCursor when no more results")
+		}
+	})
+
+	t.Run("ClosedStore", func(t *testing.T) {
+		closedStore := NewMemoryStore()
+		closedStore.Close()
+
+		_, err := closedStore.ListWithOptions(ctx, ListOptions{})
+		if err != ErrStoreClosed {
+			t.Errorf("Expected ErrStoreClosed, got %v", err)
+		}
+	})
+
+	t.Run("ContextCancellation", func(t *testing.T) {
+		// Create a store with many keys to trigger context check
+		largeStore := NewMemoryStore()
+		defer largeStore.Close()
+
+		for i := 0; i < 2000; i++ {
+			largeStore.Put(ctx, fmt.Sprintf("key-%04d", i), []byte("value"))
+		}
+
+		// Cancel context
+		cancelCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := largeStore.ListWithOptions(cancelCtx, ListOptions{})
+		if err == nil {
+			t.Errorf("Expected context cancellation error")
+		}
+	})
+}
+
+// Benchmark ListWithOptions
+func BenchmarkMemoryStore_ListWithOptions(b *testing.B) {
+	store := NewMemoryStore()
+	defer store.Close()
+	ctx := context.Background()
+
+	// Populate with 1000 keys
+	for i := 0; i < 1000; i++ {
+		key := fmt.Sprintf("key-%04d", i)
+		store.Put(ctx, key, []byte("value"))
+	}
+
+	b.Run("BasicPagination", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			store.ListWithOptions(ctx, ListOptions{
+				Limit: 100,
+			})
+		}
+	})
+
+	b.Run("PrefixFilter", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			store.ListWithOptions(ctx, ListOptions{
+				Prefix: "key-01",
+			})
+		}
+	})
+
+	b.Run("RangeQuery", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			store.ListWithOptions(ctx, ListOptions{
+				Start: "key-0100",
+				End:   "key-0200",
+			})
+		}
+	})
+
+	b.Run("Reverse", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			store.ListWithOptions(ctx, ListOptions{
+				Reverse: true,
+				Limit:   100,
+			})
+		}
+	})
+}

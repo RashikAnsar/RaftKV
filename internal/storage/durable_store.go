@@ -322,6 +322,10 @@ func (s *DurableStore) List(ctx context.Context, prefix string, limit int) ([]st
 	return s.memory.List(ctx, prefix, limit)
 }
 
+func (s *DurableStore) ListWithOptions(ctx context.Context, opts ListOptions) (*ListResult, error) {
+	return s.memory.ListWithOptions(ctx, opts)
+}
+
 func (s *DurableStore) Snapshot(ctx context.Context) (string, error) {
 	return s.takeSnapshotSync()
 }

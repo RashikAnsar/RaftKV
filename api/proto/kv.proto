@@ -29,6 +29,18 @@ service KVStore {
 
   // GetLeader returns the current Raft leader
   rpc GetLeader(LeaderRequest) returns (LeaderResponse);
+
+  // GetLeadershipInfo returns detailed leadership information
+  rpc GetLeadershipInfo(LeadershipInfoRequest) returns (LeadershipInfoResponse);
+
+  // Stepdown forces the leader to step down
+  rpc Stepdown(StepdownRequest) returns (StepdownResponse);
+
+  // TransferLeadership transfers leadership to a specific node
+  rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse);
+
+  // GetElectionHistory returns the history of leadership changes
+  rpc GetElectionHistory(ElectionHistoryRequest) returns (ElectionHistoryResponse);
 }
 
 // GetRequest contains the key to retrieve
@@ -142,4 +154,75 @@ message GetWithVersionResponse {
   bytes value = 1;
   uint64 version = 2;
   bool found = 3;
+}
+
+// LeadershipInfoRequest requests detailed leadership information
+message LeadershipInfoRequest {}
+
+// LeadershipInfoResponse contains detailed leadership information
+message LeadershipInfoResponse {
+  // Current node information
+  string node_id = 1;
+  bool is_leader = 2;
+  string state = 3; // "leader", "follower", "candidate", "shutdown"
+
+  // Leader information
+  string leader_id = 4;
+  string leader_address = 5;
+
+  // Raft state information
+  uint64 term = 6;
+  int64 last_contact_ms = 7;     // Milliseconds since last contact with leader (for followers)
+  uint64 commit_index = 8;       // Last committed index
+  uint64 applied_index = 9;      // Last applied index
+  uint64 last_log_index = 10;    // Index of last log entry
+  uint64 last_log_term = 11;     // Term of last log entry
+
+  // Cluster information
+  int32 num_peers = 12;          // Number of peers in cluster
+
+  // Leadership stability
+  int32 leadership_changes = 13; // Number of leadership changes
+  int64 leader_stability_ms = 14; // How long current leader has been in office (milliseconds)
+}
+
+// StepdownRequest requests the leader to step down
+message StepdownRequest {}
+
+// StepdownResponse confirms the stepdown operation
+message StepdownResponse {
+  bool success = 1;
+  string error = 2;
+  string message = 3;
+}
+
+// TransferLeadershipRequest requests leadership transfer to a specific node
+message TransferLeadershipRequest {
+  string target_node_id = 1;
+}
+
+// TransferLeadershipResponse confirms the leadership transfer operation
+message TransferLeadershipResponse {
+  bool success = 1;
+  string error = 2;
+  string message = 3;
+  string target_node_id = 4;
+}
+
+// ElectionHistoryRequest requests the election history
+message ElectionHistoryRequest {}
+
+// ElectionEvent represents a single leadership change event
+message ElectionEvent {
+  int64 timestamp_ms = 1;   // Unix timestamp in milliseconds
+  string old_leader_id = 2;
+  string new_leader_id = 3;
+  uint64 term = 4;
+  string reason = 5;        // "election", "stepdown", "transfer", etc.
+}
+
+// ElectionHistoryResponse contains the election history
+message ElectionHistoryResponse {
+  repeated ElectionEvent elections = 1;
+  int32 count = 2;
 }

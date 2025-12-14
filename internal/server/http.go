@@ -13,17 +13,20 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/RashikAnsar/raftkv/internal/auth"
+	"github.com/RashikAnsar/raftkv/internal/consensus"
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
 
 type HTTPServer struct {
-	store   storage.Store
-	router  *mux.Router
-	server  *http.Server
-	logger  *observability.Logger
-	metrics *observability.Metrics
+	store           storage.Store
+	router          *mux.Router
+	server          *http.Server
+	logger          *observability.Logger
+	metrics         *observability.Metrics
+	raftNode        *consensus.RaftNode
+	clusterHandlers *ClusterHandlers
 
 	// TLS configuration
 	tlsEnabled bool
@@ -50,6 +53,9 @@ type HTTPServerConfig struct {
 	UserManager   *auth.UserManager
 	APIKeyManager *auth.APIKeyManager
 	JWTManager    *auth.JWTManager
+
+	// Cluster configuration
+	RaftNode *consensus.RaftNode // Optional Raft node for cluster operations
 }
 
 func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
@@ -65,9 +71,15 @@ func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
 	}
 
 	srv := &HTTPServer{
-		store:   config.Store,
-		logger:  config.Logger,
-		metrics: config.Metrics,
+		store:    config.Store,
+		logger:   config.Logger,
+		metrics:  config.Metrics,
+		raftNode: config.RaftNode,
+	}
+
+	// Initialize cluster handlers if RaftNode is provided
+	if config.RaftNode != nil {
+		srv.clusterHandlers = NewClusterHandlers(config.RaftNode, config.Logger.Logger)
 	}
 
 	// router
@@ -175,6 +187,11 @@ func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64, co
 		router.HandleFunc("/keys", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 		router.HandleFunc("/admin/snapshot", s.limitRequestSize(s.handleSnapshot, maxRequestSize)).Methods(http.MethodPost, http.MethodOptions)
 		router.HandleFunc("/stats", s.handleStats).Methods(http.MethodGet, http.MethodOptions)
+	}
+
+	// Register cluster handlers if RaftNode is available
+	if s.clusterHandlers != nil {
+		s.clusterHandlers.RegisterRoutes(router, maxRequestSize)
 	}
 }
 

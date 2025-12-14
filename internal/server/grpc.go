@@ -429,6 +429,122 @@ func (s *GRPCServer) GetLeader(ctx context.Context, req *pb.LeaderRequest) (*pb.
 	}, nil
 }
 
+// GetLeadershipInfo returns detailed leadership information
+func (s *GRPCServer) GetLeadershipInfo(ctx context.Context, req *pb.LeadershipInfoRequest) (*pb.LeadershipInfoResponse, error) {
+	info, err := s.raftNode.GetLeadershipInfo()
+	if err != nil {
+		s.logger.Error("Failed to get leadership info", zap.Error(err))
+		return nil, status.Error(codes.Internal, "failed to get leadership information")
+	}
+
+	// Convert time.Duration to milliseconds
+	lastContactMs := info.LastContactAge.Milliseconds()
+	leaderStabilityMs := info.LeaderStability.Milliseconds()
+
+	return &pb.LeadershipInfoResponse{
+		NodeId:            info.NodeID,
+		IsLeader:          info.IsLeader,
+		State:             info.State,
+		LeaderId:          info.LeaderID,
+		LeaderAddress:     info.LeaderAddress,
+		Term:              info.Term,
+		LastContactMs:     lastContactMs,
+		CommitIndex:       info.CommitIndex,
+		AppliedIndex:      info.AppliedIndex,
+		LastLogIndex:      info.LastLogIndex,
+		LastLogTerm:       info.LastLogTerm,
+		NumPeers:          int32(info.NumPeers),
+		LeadershipChanges: int32(info.LeadershipChanges),
+		LeaderStabilityMs: leaderStabilityMs,
+	}, nil
+}
+
+// Stepdown forces the leader to step down
+func (s *GRPCServer) Stepdown(ctx context.Context, req *pb.StepdownRequest) (*pb.StepdownResponse, error) {
+	// Check if this node is the leader
+	if !s.raftNode.IsLeader() {
+		return &pb.StepdownResponse{
+			Success: false,
+			Error:   "node is not the leader",
+			Message: "stepdown can only be called on the leader",
+		}, nil
+	}
+
+	if err := s.raftNode.Stepdown(); err != nil {
+		s.logger.Error("Failed to stepdown", zap.Error(err))
+		return &pb.StepdownResponse{
+			Success: false,
+			Error:   err.Error(),
+			Message: "stepdown failed",
+		}, nil
+	}
+
+	return &pb.StepdownResponse{
+		Success: true,
+		Message: "leadership stepdown initiated",
+	}, nil
+}
+
+// TransferLeadership transfers leadership to a specific node
+func (s *GRPCServer) TransferLeadership(ctx context.Context, req *pb.TransferLeadershipRequest) (*pb.TransferLeadershipResponse, error) {
+	if req.TargetNodeId == "" {
+		return &pb.TransferLeadershipResponse{
+			Success: false,
+			Error:   "target_node_id is required",
+		}, nil
+	}
+
+	// Check if this node is the leader
+	if !s.raftNode.IsLeader() {
+		return &pb.TransferLeadershipResponse{
+			Success:      false,
+			Error:        "node is not the leader",
+			TargetNodeId: req.TargetNodeId,
+		}, nil
+	}
+
+	if err := s.raftNode.TransferLeadership(req.TargetNodeId); err != nil {
+		s.logger.Error("Failed to transfer leadership",
+			zap.String("target", req.TargetNodeId),
+			zap.Error(err),
+		)
+		return &pb.TransferLeadershipResponse{
+			Success:      false,
+			Error:        err.Error(),
+			Message:      "leadership transfer failed",
+			TargetNodeId: req.TargetNodeId,
+		}, nil
+	}
+
+	return &pb.TransferLeadershipResponse{
+		Success:      true,
+		Message:      "leadership transfer initiated",
+		TargetNodeId: req.TargetNodeId,
+	}, nil
+}
+
+// GetElectionHistory returns the history of leadership changes
+func (s *GRPCServer) GetElectionHistory(ctx context.Context, req *pb.ElectionHistoryRequest) (*pb.ElectionHistoryResponse, error) {
+	history := s.raftNode.GetElectionHistory()
+
+	// Convert to protobuf format
+	pbEvents := make([]*pb.ElectionEvent, 0, len(history))
+	for _, event := range history {
+		pbEvents = append(pbEvents, &pb.ElectionEvent{
+			TimestampMs:  event.Timestamp.UnixMilli(),
+			OldLeaderId:  event.OldLeaderID,
+			NewLeaderId:  event.NewLeaderID,
+			Term:         event.Term,
+			Reason:       event.Reason,
+		})
+	}
+
+	return &pb.ElectionHistoryResponse{
+		Elections: pbEvents,
+		Count:     int32(len(pbEvents)),
+	}, nil
+}
+
 // loggingInterceptor logs all gRPC requests
 func (s *GRPCServer) loggingInterceptor(
 	ctx context.Context,

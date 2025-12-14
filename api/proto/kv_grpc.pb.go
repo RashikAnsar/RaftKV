@@ -19,14 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KVStore_Get_FullMethodName            = "/kvstore.KVStore/Get"
-	KVStore_Put_FullMethodName            = "/kvstore.KVStore/Put"
-	KVStore_Delete_FullMethodName         = "/kvstore.KVStore/Delete"
-	KVStore_List_FullMethodName           = "/kvstore.KVStore/List"
-	KVStore_CompareAndSwap_FullMethodName = "/kvstore.KVStore/CompareAndSwap"
-	KVStore_GetWithVersion_FullMethodName = "/kvstore.KVStore/GetWithVersion"
-	KVStore_GetStats_FullMethodName       = "/kvstore.KVStore/GetStats"
-	KVStore_GetLeader_FullMethodName      = "/kvstore.KVStore/GetLeader"
+	KVStore_Get_FullMethodName                = "/kvstore.KVStore/Get"
+	KVStore_Put_FullMethodName                = "/kvstore.KVStore/Put"
+	KVStore_Delete_FullMethodName             = "/kvstore.KVStore/Delete"
+	KVStore_List_FullMethodName               = "/kvstore.KVStore/List"
+	KVStore_CompareAndSwap_FullMethodName     = "/kvstore.KVStore/CompareAndSwap"
+	KVStore_GetWithVersion_FullMethodName     = "/kvstore.KVStore/GetWithVersion"
+	KVStore_GetStats_FullMethodName           = "/kvstore.KVStore/GetStats"
+	KVStore_GetLeader_FullMethodName          = "/kvstore.KVStore/GetLeader"
+	KVStore_GetLeadershipInfo_FullMethodName  = "/kvstore.KVStore/GetLeadershipInfo"
+	KVStore_Stepdown_FullMethodName           = "/kvstore.KVStore/Stepdown"
+	KVStore_TransferLeadership_FullMethodName = "/kvstore.KVStore/TransferLeadership"
+	KVStore_GetElectionHistory_FullMethodName = "/kvstore.KVStore/GetElectionHistory"
 )
 
 // KVStoreClient is the client API for KVStore service.
@@ -51,6 +55,14 @@ type KVStoreClient interface {
 	GetStats(ctx context.Context, in *StatsRequest, opts ...grpc.CallOption) (*StatsResponse, error)
 	// GetLeader returns the current Raft leader
 	GetLeader(ctx context.Context, in *LeaderRequest, opts ...grpc.CallOption) (*LeaderResponse, error)
+	// GetLeadershipInfo returns detailed leadership information
+	GetLeadershipInfo(ctx context.Context, in *LeadershipInfoRequest, opts ...grpc.CallOption) (*LeadershipInfoResponse, error)
+	// Stepdown forces the leader to step down
+	Stepdown(ctx context.Context, in *StepdownRequest, opts ...grpc.CallOption) (*StepdownResponse, error)
+	// TransferLeadership transfers leadership to a specific node
+	TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error)
+	// GetElectionHistory returns the history of leadership changes
+	GetElectionHistory(ctx context.Context, in *ElectionHistoryRequest, opts ...grpc.CallOption) (*ElectionHistoryResponse, error)
 }
 
 type kVStoreClient struct {
@@ -141,6 +153,46 @@ func (c *kVStoreClient) GetLeader(ctx context.Context, in *LeaderRequest, opts .
 	return out, nil
 }
 
+func (c *kVStoreClient) GetLeadershipInfo(ctx context.Context, in *LeadershipInfoRequest, opts ...grpc.CallOption) (*LeadershipInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LeadershipInfoResponse)
+	err := c.cc.Invoke(ctx, KVStore_GetLeadershipInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kVStoreClient) Stepdown(ctx context.Context, in *StepdownRequest, opts ...grpc.CallOption) (*StepdownResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StepdownResponse)
+	err := c.cc.Invoke(ctx, KVStore_Stepdown_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kVStoreClient) TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TransferLeadershipResponse)
+	err := c.cc.Invoke(ctx, KVStore_TransferLeadership_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kVStoreClient) GetElectionHistory(ctx context.Context, in *ElectionHistoryRequest, opts ...grpc.CallOption) (*ElectionHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ElectionHistoryResponse)
+	err := c.cc.Invoke(ctx, KVStore_GetElectionHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // KVStoreServer is the server API for KVStore service.
 // All implementations must embed UnimplementedKVStoreServer
 // for forward compatibility.
@@ -163,6 +215,14 @@ type KVStoreServer interface {
 	GetStats(context.Context, *StatsRequest) (*StatsResponse, error)
 	// GetLeader returns the current Raft leader
 	GetLeader(context.Context, *LeaderRequest) (*LeaderResponse, error)
+	// GetLeadershipInfo returns detailed leadership information
+	GetLeadershipInfo(context.Context, *LeadershipInfoRequest) (*LeadershipInfoResponse, error)
+	// Stepdown forces the leader to step down
+	Stepdown(context.Context, *StepdownRequest) (*StepdownResponse, error)
+	// TransferLeadership transfers leadership to a specific node
+	TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error)
+	// GetElectionHistory returns the history of leadership changes
+	GetElectionHistory(context.Context, *ElectionHistoryRequest) (*ElectionHistoryResponse, error)
 	mustEmbedUnimplementedKVStoreServer()
 }
 
@@ -196,6 +256,18 @@ func (UnimplementedKVStoreServer) GetStats(context.Context, *StatsRequest) (*Sta
 }
 func (UnimplementedKVStoreServer) GetLeader(context.Context, *LeaderRequest) (*LeaderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLeader not implemented")
+}
+func (UnimplementedKVStoreServer) GetLeadershipInfo(context.Context, *LeadershipInfoRequest) (*LeadershipInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLeadershipInfo not implemented")
+}
+func (UnimplementedKVStoreServer) Stepdown(context.Context, *StepdownRequest) (*StepdownResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Stepdown not implemented")
+}
+func (UnimplementedKVStoreServer) TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TransferLeadership not implemented")
+}
+func (UnimplementedKVStoreServer) GetElectionHistory(context.Context, *ElectionHistoryRequest) (*ElectionHistoryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetElectionHistory not implemented")
 }
 func (UnimplementedKVStoreServer) mustEmbedUnimplementedKVStoreServer() {}
 func (UnimplementedKVStoreServer) testEmbeddedByValue()                 {}
@@ -362,6 +434,78 @@ func _KVStore_GetLeader_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KVStore_GetLeadershipInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LeadershipInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).GetLeadershipInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_GetLeadershipInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).GetLeadershipInfo(ctx, req.(*LeadershipInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KVStore_Stepdown_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StepdownRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).Stepdown(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_Stepdown_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).Stepdown(ctx, req.(*StepdownRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KVStore_TransferLeadership_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransferLeadershipRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).TransferLeadership(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_TransferLeadership_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).TransferLeadership(ctx, req.(*TransferLeadershipRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KVStore_GetElectionHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ElectionHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).GetElectionHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_GetElectionHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).GetElectionHistory(ctx, req.(*ElectionHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // KVStore_ServiceDesc is the grpc.ServiceDesc for KVStore service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -400,6 +544,22 @@ var KVStore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetLeader",
 			Handler:    _KVStore_GetLeader_Handler,
+		},
+		{
+			MethodName: "GetLeadershipInfo",
+			Handler:    _KVStore_GetLeadershipInfo_Handler,
+		},
+		{
+			MethodName: "Stepdown",
+			Handler:    _KVStore_Stepdown_Handler,
+		},
+		{
+			MethodName: "TransferLeadership",
+			Handler:    _KVStore_TransferLeadership_Handler,
+		},
+		{
+			MethodName: "GetElectionHistory",
+			Handler:    _KVStore_GetElectionHistory_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

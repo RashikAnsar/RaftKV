@@ -1,0 +1,244 @@
+syntax = "proto3";
+
+package kvstore;
+
+option go_package = "github.com/RashikAnsar/raftkv/api/proto;proto";
+
+// QueueService provides message queue operations
+service QueueService {
+  // Queue management
+  rpc CreateQueue(CreateQueueRequest) returns (CreateQueueResponse);
+  rpc DeleteQueue(DeleteQueueRequest) returns (DeleteQueueResponse);
+  rpc GetQueueInfo(GetQueueInfoRequest) returns (GetQueueInfoResponse);
+  rpc ListQueues(ListQueuesRequest) returns (ListQueuesResponse);
+  rpc GetQueueStats(GetQueueStatsRequest) returns (GetQueueStatsResponse);
+  rpc PurgeQueue(PurgeQueueRequest) returns (PurgeQueueResponse);
+
+  // Message operations
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+  rpc Dequeue(DequeueRequest) returns (DequeueResponse);
+  rpc Peek(PeekRequest) returns (PeekResponse);
+  rpc Acknowledge(AcknowledgeRequest) returns (AcknowledgeResponse);
+  rpc Nack(NackRequest) returns (NackResponse);
+  rpc GetMessage(GetMessageRequest) returns (GetMessageResponse);
+  rpc DeleteMessage(DeleteMessageRequest) returns (DeleteMessageResponse);
+
+  // Batch operations
+  rpc BatchEnqueue(BatchEnqueueRequest) returns (BatchEnqueueResponse);
+  rpc BatchDequeue(BatchDequeueRequest) returns (BatchDequeueResponse);
+  rpc BatchAcknowledge(BatchAcknowledgeRequest) returns (BatchAcknowledgeResponse);
+}
+
+// Message represents a queue message
+message Message {
+  string id = 1;
+  string queue_name = 2;
+  bytes body = 3;
+  int32 priority = 4;
+  map<string, string> headers = 5;
+  int64 created_at = 6;         // Unix timestamp in milliseconds
+  int64 scheduled_at = 7;       // Unix timestamp in milliseconds (0 = not scheduled)
+  int64 expires_at = 8;         // Unix timestamp in milliseconds (0 = no expiration)
+  int32 delivery_count = 9;
+  int64 last_delivered = 10;    // Unix timestamp in milliseconds (0 = never delivered)
+  string dlq_reason = 11;       // Reason for DLQ (empty if not in DLQ)
+}
+
+// QueueConfig represents queue configuration
+message QueueConfig {
+  string name = 1;
+  string type = 2;                // "fifo" or "priority"
+  int32 max_length = 3;           // 0 = unlimited
+  int32 max_retries = 4;          // 0 = unlimited
+  int64 message_ttl_ms = 5;       // Message TTL in milliseconds (0 = no expiration)
+  int64 visibility_timeout_ms = 6; // Visibility timeout in milliseconds
+  bool dlq_enabled = 7;
+  string dlq_name = 8;
+}
+
+// QueueStats represents queue statistics
+message QueueStats {
+  string name = 1;
+  int32 length = 2;               // Total messages in queue
+  int32 ready = 3;                // Messages ready for delivery
+  int32 scheduled = 4;            // Scheduled/delayed messages
+  int64 delivered_count = 5;      // Total messages delivered
+  int64 acknowledged_count = 6;   // Total messages acknowledged
+  int64 failed_count = 7;         // Total failed deliveries
+  int32 dlq_count = 8;            // Messages in dead letter queue
+  int64 created_at = 9;           // Unix timestamp in milliseconds
+  int64 updated_at = 10;          // Unix timestamp in milliseconds
+}
+
+// Queue management requests/responses
+
+message CreateQueueRequest {
+  QueueConfig config = 1;
+}
+
+message CreateQueueResponse {
+  bool success = 1;
+  string error = 2;
+  QueueConfig config = 3;
+}
+
+message DeleteQueueRequest {
+  string name = 1;
+}
+
+message DeleteQueueResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message GetQueueInfoRequest {
+  string name = 1;
+}
+
+message GetQueueInfoResponse {
+  QueueConfig config = 1;
+  QueueStats stats = 2;
+  bool found = 3;
+}
+
+message ListQueuesRequest {
+  string prefix = 1;              // Filter queues by name prefix
+  int32 limit = 2;                // Max number of queues to return (0 = unlimited)
+}
+
+message ListQueuesResponse {
+  repeated string queue_names = 1;
+  int32 count = 2;
+}
+
+message GetQueueStatsRequest {
+  string name = 1;
+}
+
+message GetQueueStatsResponse {
+  QueueStats stats = 1;
+  bool found = 2;
+}
+
+message PurgeQueueRequest {
+  string queue_name = 1;
+}
+
+message PurgeQueueResponse {
+  bool success = 1;
+  string error = 2;
+  int32 messages_deleted = 3;
+}
+
+// Message operation requests/responses
+
+message EnqueueRequest {
+  string queue_name = 1;
+  bytes body = 2;
+  int32 priority = 3;             // Optional, default 0
+  map<string, string> headers = 4;
+  int64 scheduled_at = 5;         // Unix timestamp in milliseconds (0 = immediate)
+  int64 expires_at = 6;           // Unix timestamp in milliseconds (0 = use queue TTL)
+}
+
+message EnqueueResponse {
+  bool success = 1;
+  string error = 2;
+  string message_id = 3;
+}
+
+message DequeueRequest {
+  string queue_name = 1;
+}
+
+message DequeueResponse {
+  Message message = 1;
+  bool found = 2;
+  string error = 3;
+}
+
+message PeekRequest {
+  string queue_name = 1;
+}
+
+message PeekResponse {
+  Message message = 1;
+  bool found = 2;
+  string error = 3;
+}
+
+message AcknowledgeRequest {
+  string queue_name = 1;
+  string message_id = 2;
+}
+
+message AcknowledgeResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message NackRequest {
+  string queue_name = 1;
+  string message_id = 2;
+  bool requeue = 3;               // If true, requeue the message; if false, delete it
+}
+
+message NackResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message GetMessageRequest {
+  string queue_name = 1;
+  string message_id = 2;
+}
+
+message GetMessageResponse {
+  Message message = 1;
+  bool found = 2;
+  string error = 3;
+}
+
+message DeleteMessageRequest {
+  string queue_name = 1;
+  string message_id = 2;
+}
+
+message DeleteMessageResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Batch operation requests/responses
+
+message BatchEnqueueRequest {
+  string queue_name = 1;
+  repeated EnqueueRequest messages = 2;
+}
+
+message BatchEnqueueResponse {
+  repeated EnqueueResponse results = 1;
+  int32 successful = 2;
+  int32 failed = 3;
+}
+
+message BatchDequeueRequest {
+  string queue_name = 1;
+  int32 count = 2;                // Number of messages to dequeue
+}
+
+message BatchDequeueResponse {
+  repeated Message messages = 1;
+  int32 count = 2;
+}
+
+message BatchAcknowledgeRequest {
+  string queue_name = 1;
+  repeated string message_ids = 2;
+}
+
+message BatchAcknowledgeResponse {
+  repeated AcknowledgeResponse results = 1;
+  int32 successful = 2;
+  int32 failed = 3;
+}

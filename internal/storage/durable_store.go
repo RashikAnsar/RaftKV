@@ -491,7 +491,26 @@ func (s *DurableStore) Reset() {
 
 // ApplyRaftEntry applies a Raft log entry to the store with Raft metadata
 // This is the Raft-aware version of Put/Delete/CAS
-func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, op string, key string, value []byte) error {
+// CASApplyResult contains the result of applying a CAS operation through Raft
+type CASApplyResult struct {
+	Success bool
+	Version uint64
+}
+
+func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, op string, key string, value []byte) (*CASApplyResult, error) {
+	// Check if this index has already been applied (idempotency)
+	// This can happen during recovery when WAL replay brings state forward,
+	// then Raft replays its log entries
+	s.mu.Lock()
+	if index <= s.lastRaftIndex {
+		s.mu.Unlock()
+		// Already applied, return success without re-applying
+		// For CAS operations, we can't reliably return the result since it was
+		// applied previously, so return nil (caller should handle this)
+		return nil, nil
+	}
+	s.mu.Unlock()
+
 	// Determine operation type
 	var operation byte
 	switch op {
@@ -502,7 +521,7 @@ func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, o
 	case "cas":
 		operation = OpCAS
 	default:
-		return fmt.Errorf("unknown operation: %s", op)
+		return nil, fmt.Errorf("unknown operation: %s", op)
 	}
 
 	// Create WAL entry with Raft metadata
@@ -517,30 +536,40 @@ func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, o
 
 	// 1. Write to WAL first
 	if err := s.wal.Append(entry); err != nil {
-		return fmt.Errorf("failed to write to WAL: %w", err)
+		return nil, fmt.Errorf("failed to write to WAL: %w", err)
 	}
+
+	var casResult *CASApplyResult
 
 	// 2. Apply to memory
 	switch operation {
 	case OpPut:
 		if err := s.memory.Put(ctx, key, value); err != nil {
-			return fmt.Errorf("failed to apply PUT to memory: %w", err)
+			return nil, fmt.Errorf("failed to apply PUT to memory: %w", err)
 		}
 	case OpDelete:
 		if err := s.memory.Delete(ctx, key); err != nil {
-			return fmt.Errorf("failed to apply DELETE to memory: %w", err)
+			return nil, fmt.Errorf("failed to apply DELETE to memory: %w", err)
 		}
 	case OpCAS:
 		// Decode CAS operation: first 8 bytes = expected version, rest = new value
 		if len(value) < 8 {
-			return fmt.Errorf("invalid CAS value: too short")
+			return nil, fmt.Errorf("invalid CAS value: too short")
 		}
 		expectedVersion := binary.BigEndian.Uint64(value[0:8])
 		newValue := value[8:]
 
-		_, _, err := s.memory.CompareAndSwap(ctx, key, expectedVersion, newValue)
+		// Apply CAS - note that CAS may fail due to version mismatch, but this is
+		// not an error at the Raft level. The operation is still considered successfully
+		// applied to the log, but the actual state change depends on the version check.
+		version, success, err := s.memory.CompareAndSwap(ctx, key, expectedVersion, newValue)
 		if err != nil {
-			return fmt.Errorf("failed to apply CAS to memory: %w", err)
+			return nil, fmt.Errorf("failed to apply CAS to memory: %w", err)
+		}
+		// Return CAS result so caller knows if operation succeeded
+		casResult = &CASApplyResult{
+			Success: success,
+			Version: version,
 		}
 	}
 
@@ -565,7 +594,7 @@ func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, o
 		}
 	}
 
-	return nil
+	return casResult, nil
 }
 
 // LastAppliedIndex returns the last applied Raft index and term

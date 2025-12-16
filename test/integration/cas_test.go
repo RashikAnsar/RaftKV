@@ -204,24 +204,15 @@ func TestCAS_ConcurrentThroughRaft(t *testing.T) {
 					ExpectedVersion: version,
 				}
 
-				err = node.Apply(casCmd, 5*time.Second)
+				result, err := node.ApplyWithResult(casCmd, 5*time.Second)
 				if err != nil {
 					continue
 				}
 
-				// Check if CAS succeeded by reading the version
-				newValue, newVersion, err := store.GetWithVersion(ctx, "concurrent-counter")
-				if err != nil {
-					continue
-				}
-
-				// If version incremented and value matches what we set, CAS succeeded
-				if newVersion > version {
-					expectedValue := fmt.Sprintf("%d", currentValue+1)
-					if string(newValue) == expectedValue {
-						successCount++
-						i++
-					}
+				// Check if CAS succeeded using the returned result
+				if casResult, ok := result.(*consensus.CASResult); ok && casResult.Success {
+					successCount++
+					i++
 				}
 			}
 
@@ -288,8 +279,10 @@ func TestCAS_RaftRecovery(t *testing.T) {
 			Key:   "persistent",
 			Value: []byte("0"),
 		}
-		node.Apply(cmd, 5*time.Second)
+		err = node.Apply(cmd, 5*time.Second)
+		require.NoError(t, err)
 
+		successCount := 0
 		for i := 1; i <= 5; i++ {
 			casCmd := consensus.Command{
 				Op:              consensus.OpTypeCAS,
@@ -297,8 +290,19 @@ func TestCAS_RaftRecovery(t *testing.T) {
 				Value:           []byte(fmt.Sprintf("%d", i)),
 				ExpectedVersion: uint64(i),
 			}
-			node.Apply(casCmd, 5*time.Second)
+			result, err := node.ApplyWithResult(casCmd, 5*time.Second)
+			require.NoError(t, err)
+
+			if casResult, ok := result.(*consensus.CASResult); ok && casResult.Success {
+				successCount++
+				t.Logf("CAS %d succeeded: wrote value=%d, new version=%d", i, i, casResult.Version)
+			} else {
+				t.Logf("CAS %d failed", i)
+			}
 		}
+
+		t.Logf("Phase 1: %d/%d CAS operations succeeded", successCount, 5)
+		require.Equal(t, 5, successCount, "All CAS operations should succeed in phase 1")
 
 		node.Shutdown()
 		store.Close()
@@ -398,21 +402,20 @@ func TestCAS_OptimisticConcurrency(t *testing.T) {
 					Value:           []byte(fmt.Sprintf("%d", newBalance)),
 					ExpectedVersion: version,
 				}
-				err = node.Apply(casCmd, 5*time.Second)
+				result, err := node.ApplyWithResult(casCmd, 5*time.Second)
 				if err != nil {
 					continue
 				}
 
-				// Check if our CAS succeeded
-				newValue, newVersion, _ := store.GetWithVersion(ctx, "account:balance")
-				if newVersion == version+1 && string(newValue) == fmt.Sprintf("%d", newBalance) {
+				// Check if our CAS succeeded using the returned result
+				if casResult, ok := result.(*consensus.CASResult); ok && casResult.Success {
 					mu.Lock()
 					successCount++
 					mu.Unlock()
 					return
 				}
 
-				// CAS failed, retry
+				// CAS failed (version mismatch), retry
 				time.Sleep(10 * time.Millisecond)
 			}
 		}()

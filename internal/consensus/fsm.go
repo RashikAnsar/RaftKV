@@ -27,6 +27,12 @@ type Command struct {
 	ExpectedVersion uint64 `json:"expected_version,omitempty"` // For CAS operations
 }
 
+// CASResult is returned by CAS operations
+type CASResult struct {
+	Success bool   `json:"success"`
+	Version uint64 `json:"version"`
+}
+
 type FSM struct {
 	store        *storage.DurableStore // Changed from storage.Store interface to concrete type
 	logger       *zap.Logger
@@ -70,7 +76,8 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 
 	// Use ApplyRaftEntry with context
 	ctx := context.Background()
-	if err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, cmd.Op, cmd.Key, value); err != nil {
+	casResult, err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, cmd.Op, cmd.Key, value)
+	if err != nil {
 		f.logger.Error("Failed to apply Raft entry",
 			zap.String("op", cmd.Op),
 			zap.String("key", cmd.Key),
@@ -108,6 +115,15 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 		zap.Uint64("index", log.Index),
 		zap.Uint64("term", log.Term),
 	)
+
+	// For CAS operations, return the result
+	if casResult != nil {
+		return &CASResult{
+			Success: casResult.Success,
+			Version: casResult.Version,
+		}
+	}
+
 	return nil
 }
 

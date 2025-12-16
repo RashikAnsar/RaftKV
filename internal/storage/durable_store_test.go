@@ -864,7 +864,7 @@ func TestDurableStore_ApplyRaftEntry_CAS(t *testing.T) {
 	defer store.Close()
 
 	// Create initial value
-	err = store.ApplyRaftEntry(ctx, 1, 1, "put", "mykey", []byte("value1"))
+	_, err = store.ApplyRaftEntry(ctx, 1, 1, "put", "mykey", []byte("value1"))
 	if err != nil {
 		t.Fatalf("ApplyRaftEntry put failed: %v", err)
 	}
@@ -881,7 +881,7 @@ func TestDurableStore_ApplyRaftEntry_CAS(t *testing.T) {
 	casValue = append(casValue, []byte("value2")...)
 
 	// Apply CAS through Raft
-	err = store.ApplyRaftEntry(ctx, 2, 1, "cas", "mykey", casValue)
+	_, err = store.ApplyRaftEntry(ctx, 2, 1, "cas", "mykey", casValue)
 	if err != nil {
 		t.Fatalf("ApplyRaftEntry cas failed: %v", err)
 	}
@@ -903,7 +903,7 @@ func TestDurableStore_ApplyRaftEntry_CAS(t *testing.T) {
 	binary.BigEndian.PutUint64(casValue2[0:8], 1) // Wrong version (expecting 2)
 	casValue2 = append(casValue2, []byte("value3")...)
 
-	err = store.ApplyRaftEntry(ctx, 3, 1, "cas", "mykey", casValue2)
+	_, err = store.ApplyRaftEntry(ctx, 3, 1, "cas", "mykey", casValue2)
 	if err != nil {
 		t.Fatalf("ApplyRaftEntry cas should not error on version mismatch: %v", err)
 	}

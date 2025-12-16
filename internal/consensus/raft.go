@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -31,6 +32,7 @@ type RaftNode struct {
 	RaftAddr          string // Raft address (exported for testing)
 	leadershipManager *LeadershipManager // Leadership tracking and management
 	leadershipStopCh  chan struct{} // Channel to stop leadership tracking
+	shutdownOnce      sync.Once // Ensures shutdown is only called once
 }
 
 type RaftConfig struct {
@@ -274,6 +276,32 @@ func (r *RaftNode) Apply(cmd Command, timeout time.Duration) error {
 	return nil
 }
 
+// ApplyWithResult applies a command and returns both error and any result (e.g., CAS result)
+func (r *RaftNode) ApplyWithResult(cmd Command, timeout time.Duration) (interface{}, error) {
+	// Serialize command
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal command: %w", err)
+	}
+
+	// Apply to Raft
+	future := r.raft.Apply(data, timeout)
+	if err := future.Error(); err != nil {
+		return nil, fmt.Errorf("raft apply failed: %w", err)
+	}
+
+	// Check for errors or results in the response
+	if resp := future.Response(); resp != nil {
+		if err, ok := resp.(error); ok {
+			return nil, err
+		}
+		// Return any other response (e.g., CASResult)
+		return resp, nil
+	}
+
+	return nil, nil
+}
+
 // Get retrieves a value (reads are local, no Raft involved)
 func (r *RaftNode) Get(ctx context.Context, key string) ([]byte, error) {
 	// Direct read from local store (may be stale on followers)
@@ -407,23 +435,29 @@ func (r *RaftNode) Snapshot() error {
 
 // Shutdown gracefully shuts down the Raft node
 func (r *RaftNode) Shutdown() error {
-	r.logger.Info("Shutting down Raft node")
+	var shutdownErr error
 
-	// Stop leadership tracking
-	if r.leadershipStopCh != nil {
-		close(r.leadershipStopCh)
-	}
+	r.shutdownOnce.Do(func() {
+		r.logger.Info("Shutting down Raft node")
 
-	future := r.raft.Shutdown()
-	if err := future.Error(); err != nil {
-		return fmt.Errorf("failed to shutdown raft: %w", err)
-	}
+		// Stop leadership tracking
+		if r.leadershipStopCh != nil {
+			close(r.leadershipStopCh)
+		}
 
-	if err := r.transport.Close(); err != nil {
-		return fmt.Errorf("failed to close transport: %w", err)
-	}
+		future := r.raft.Shutdown()
+		if err := future.Error(); err != nil {
+			shutdownErr = fmt.Errorf("failed to shutdown raft: %w", err)
+			return
+		}
 
-	return nil
+		if err := r.transport.Close(); err != nil {
+			shutdownErr = fmt.Errorf("failed to close transport: %w", err)
+			return
+		}
+	})
+
+	return shutdownErr
 }
 
 // RaftStats returns Raft-specific statistics

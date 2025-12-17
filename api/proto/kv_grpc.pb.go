@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.33.1
-// source: kv.proto
+// source: api/proto/kv.proto
 
 package proto
 
@@ -33,6 +33,7 @@ const (
 	KVStore_GetElectionHistory_FullMethodName = "/kvstore.KVStore/GetElectionHistory"
 	KVStore_GetTTL_FullMethodName             = "/kvstore.KVStore/GetTTL"
 	KVStore_SetTTL_FullMethodName             = "/kvstore.KVStore/SetTTL"
+	KVStore_Watch_FullMethodName              = "/kvstore.KVStore/Watch"
 )
 
 // KVStoreClient is the client API for KVStore service.
@@ -69,6 +70,8 @@ type KVStoreClient interface {
 	GetTTL(ctx context.Context, in *GetTTLRequest, opts ...grpc.CallOption) (*GetTTLResponse, error)
 	// SetTTL updates the TTL for an existing key
 	SetTTL(ctx context.Context, in *SetTTLRequest, opts ...grpc.CallOption) (*SetTTLResponse, error)
+	// Watch subscribes to real-time key-value change notifications
+	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchEvent], error)
 }
 
 type kVStoreClient struct {
@@ -219,6 +222,25 @@ func (c *kVStoreClient) SetTTL(ctx context.Context, in *SetTTLRequest, opts ...g
 	return out, nil
 }
 
+func (c *kVStoreClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &KVStore_ServiceDesc.Streams[0], KVStore_Watch_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchRequest, WatchEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type KVStore_WatchClient = grpc.ServerStreamingClient[WatchEvent]
+
 // KVStoreServer is the server API for KVStore service.
 // All implementations must embed UnimplementedKVStoreServer
 // for forward compatibility.
@@ -253,6 +275,8 @@ type KVStoreServer interface {
 	GetTTL(context.Context, *GetTTLRequest) (*GetTTLResponse, error)
 	// SetTTL updates the TTL for an existing key
 	SetTTL(context.Context, *SetTTLRequest) (*SetTTLResponse, error)
+	// Watch subscribes to real-time key-value change notifications
+	Watch(*WatchRequest, grpc.ServerStreamingServer[WatchEvent]) error
 	mustEmbedUnimplementedKVStoreServer()
 }
 
@@ -304,6 +328,9 @@ func (UnimplementedKVStoreServer) GetTTL(context.Context, *GetTTLRequest) (*GetT
 }
 func (UnimplementedKVStoreServer) SetTTL(context.Context, *SetTTLRequest) (*SetTTLResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetTTL not implemented")
+}
+func (UnimplementedKVStoreServer) Watch(*WatchRequest, grpc.ServerStreamingServer[WatchEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
 }
 func (UnimplementedKVStoreServer) mustEmbedUnimplementedKVStoreServer() {}
 func (UnimplementedKVStoreServer) testEmbeddedByValue()                 {}
@@ -578,6 +605,17 @@ func _KVStore_SetTTL_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KVStore_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(KVStoreServer).Watch(m, &grpc.GenericServerStream[WatchRequest, WatchEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type KVStore_WatchServer = grpc.ServerStreamingServer[WatchEvent]
+
 // KVStore_ServiceDesc is the grpc.ServiceDesc for KVStore service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -642,6 +680,12 @@ var KVStore_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _KVStore_SetTTL_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "kv.proto",
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Watch",
+			Handler:       _KVStore_Watch_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "api/proto/kv.proto",
 }

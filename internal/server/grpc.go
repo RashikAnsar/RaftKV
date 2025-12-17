@@ -17,16 +17,18 @@ import (
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
+	"github.com/RashikAnsar/raftkv/internal/watch"
 )
 
 // GRPCServer implements the KVStore gRPC service
 type GRPCServer struct {
 	pb.UnimplementedKVStoreServer
-	raftNode *consensus.RaftNode
-	logger   *zap.Logger
-	metrics  *observability.Metrics
-	server   *grpc.Server
-	addr     string
+	raftNode     *consensus.RaftNode
+	logger       *zap.Logger
+	metrics      *observability.Metrics
+	server       *grpc.Server
+	addr         string
+	watchManager *watch.WatchManager
 }
 
 // GRPCServerConfig holds configuration for the gRPC server
@@ -689,4 +691,9 @@ func (s *GRPCServer) loggingInterceptor(
 	}
 
 	return resp, err
+}
+
+// SetWatchManager sets the watch manager for the gRPC server
+func (s *GRPCServer) SetWatchManager(wm *watch.WatchManager) {
+	s.watchManager = wm
 }

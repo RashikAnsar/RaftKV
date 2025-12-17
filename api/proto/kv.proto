@@ -47,6 +47,9 @@ service KVStore {
 
   // SetTTL updates the TTL for an existing key
   rpc SetTTL(SetTTLRequest) returns (SetTTLResponse);
+
+  // Watch subscribes to real-time key-value change notifications
+  rpc Watch(WatchRequest) returns (stream WatchEvent);
 }
 
 // GetRequest contains the key to retrieve
@@ -258,4 +261,23 @@ message SetTTLResponse {
   bool success = 1;
   string error = 2;
   string leader = 3; // The leader that processed the request
+}
+
+// WatchRequest subscribes to key-value change notifications
+message WatchRequest {
+  string key_prefix = 1;        // Watch keys with this prefix (empty = all keys)
+  repeated string operations = 2; // Filter by operations: ["put", "delete", "cas", "put_ttl"]
+  int64 start_revision = 3;     // Start watching from this Raft index (0 = current, ignored for now)
+  bool send_initial_value = 4;  // Send current value before streaming changes
+}
+
+// WatchEvent represents a key-value change event
+message WatchEvent {
+  string key = 1;
+  bytes value = 2;              // Empty for delete operations
+  string operation = 3;         // "put", "delete", "cas", "put_ttl"
+  uint64 raft_index = 4;        // Raft log index for ordering
+  uint64 raft_term = 5;         // Raft term
+  int64 timestamp = 6;          // Unix timestamp in nanoseconds
+  uint64 version = 7;           // Key version (for CAS operations)
 }

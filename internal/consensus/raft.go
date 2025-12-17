@@ -324,6 +324,16 @@ func (r *RaftNode) ListWithOptions(ctx context.Context, opts storage.ListOptions
 	return r.fsm.store.ListWithOptions(ctx, opts)
 }
 
+// GetTTL returns the remaining TTL for a key
+func (r *RaftNode) GetTTL(ctx context.Context, key string) (time.Duration, error) {
+	return r.fsm.store.GetTTL(ctx, key)
+}
+
+// SetTTL updates the TTL for an existing key
+func (r *RaftNode) SetTTL(ctx context.Context, key string, ttl time.Duration) error {
+	return r.fsm.store.SetTTL(ctx, key, ttl)
+}
+
 // Stats returns store statistics
 func (r *RaftNode) Stats() storage.Stats {
 	return r.fsm.store.Stats()

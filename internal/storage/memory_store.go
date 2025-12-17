@@ -17,6 +17,7 @@ type KeyValue struct {
 	Version   uint64
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	ExpiresAt *time.Time // nil means no expiration
 }
 
 type MemoryStore struct {
@@ -56,6 +57,15 @@ func (s *MemoryStore) Get(ctx context.Context, key string) ([]byte, error) {
 	s.statsGets.Add(1)
 
 	if !exists {
+		return nil, ErrKeyNotFound
+	}
+
+	// Check if key has expired (lazy expiration)
+	if kv.ExpiresAt != nil && time.Now().After(*kv.ExpiresAt) {
+		// Key has expired, delete it
+		s.mu.Lock()
+		delete(s.data, key)
+		s.mu.Unlock()
 		return nil, ErrKeyNotFound
 	}
 
@@ -106,6 +116,147 @@ func (s *MemoryStore) Put(ctx context.Context, key string, value []byte) error {
 	s.mu.Unlock()
 
 	s.statsPuts.Add(1)
+
+	return nil
+}
+
+// PutWithTTL stores a key-value pair with a TTL (time-to-live)
+func (s *MemoryStore) PutWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if key == "" {
+		return ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return ErrStoreClosed
+	}
+
+	if ttl < 0 {
+		return errors.New("TTL must be positive")
+	}
+
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
+
+	now := time.Now()
+	expiresAt := now.Add(ttl)
+
+	s.mu.Lock()
+	existing, exists := s.data[key]
+	if exists {
+		// Update existing key - increment version
+		s.data[key] = &KeyValue{
+			Key:       key,
+			Value:     valueCopy,
+			Version:   existing.Version + 1,
+			CreatedAt: existing.CreatedAt,
+			UpdatedAt: now,
+			ExpiresAt: &expiresAt,
+		}
+	} else {
+		// New key - version starts at 1
+		s.data[key] = &KeyValue{
+			Key:       key,
+			Value:     valueCopy,
+			Version:   1,
+			CreatedAt: now,
+			UpdatedAt: now,
+			ExpiresAt: &expiresAt,
+		}
+	}
+	s.mu.Unlock()
+
+	s.statsPuts.Add(1)
+
+	return nil
+}
+
+// GetTTL returns the remaining TTL for a key
+func (s *MemoryStore) GetTTL(ctx context.Context, key string) (time.Duration, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+
+	if key == "" {
+		return 0, ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return 0, ErrStoreClosed
+	}
+
+	s.mu.RLock()
+	kv, exists := s.data[key]
+	s.mu.RUnlock()
+
+	if !exists {
+		return 0, ErrKeyNotFound
+	}
+
+	// Check if key has expired
+	if kv.ExpiresAt != nil && time.Now().After(*kv.ExpiresAt) {
+		// Key has expired
+		s.mu.Lock()
+		delete(s.data, key)
+		s.mu.Unlock()
+		return 0, ErrKeyNotFound
+	}
+
+	// If no expiration set, return 0 (meaning no TTL)
+	if kv.ExpiresAt == nil {
+		return 0, nil
+	}
+
+	// Calculate remaining TTL
+	remaining := time.Until(*kv.ExpiresAt)
+	if remaining < 0 {
+		return 0, nil
+	}
+
+	return remaining, nil
+}
+
+// SetTTL updates the TTL for an existing key
+func (s *MemoryStore) SetTTL(ctx context.Context, key string, ttl time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if key == "" {
+		return ErrInvalidKey
+	}
+
+	if s.closed.Load() {
+		return ErrStoreClosed
+	}
+
+	if ttl < 0 {
+		return errors.New("TTL must be positive")
+	}
+
+	now := time.Now()
+	expiresAt := now.Add(ttl)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	kv, exists := s.data[key]
+	if !exists {
+		return ErrKeyNotFound
+	}
+
+	// Check if already expired
+	if kv.ExpiresAt != nil && now.After(*kv.ExpiresAt) {
+		delete(s.data, key)
+		return ErrKeyNotFound
+	}
+
+	// Update expiration
+	kv.ExpiresAt = &expiresAt
+	kv.UpdatedAt = now
 
 	return nil
 }

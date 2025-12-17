@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 )
 
 // CachedStore wraps a Store with an LRU cache for read optimization
@@ -47,6 +48,38 @@ func (cs *CachedStore) Put(ctx context.Context, key string, value []byte) error 
 	// Update cache (write-through)
 	cs.cache.Put(key, value)
 
+	return nil
+}
+
+// PutWithTTL stores a value with TTL and updates the cache
+func (cs *CachedStore) PutWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	// Write to underlying store first
+	if err := cs.store.PutWithTTL(ctx, key, value, ttl); err != nil {
+		return err
+	}
+
+	// Update cache (write-through)
+	// Note: Cache has its own global TTL; per-key TTL is managed by underlying store
+	cs.cache.Put(key, value)
+
+	return nil
+}
+
+// GetTTL returns the remaining TTL for a key
+func (cs *CachedStore) GetTTL(ctx context.Context, key string) (time.Duration, error) {
+	// Delegate to underlying store
+	// Note: We don't cache TTL values as they change over time
+	return cs.store.GetTTL(ctx, key)
+}
+
+// SetTTL updates the TTL for an existing key
+func (cs *CachedStore) SetTTL(ctx context.Context, key string, ttl time.Duration) error {
+	// Update in underlying store
+	if err := cs.store.SetTTL(ctx, key, ttl); err != nil {
+		return err
+	}
+
+	// No cache update needed - cache TTL is managed separately
 	return nil
 }
 

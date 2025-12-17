@@ -101,6 +101,18 @@ func (m *MockStore) Close() error {
 	return nil
 }
 
+func (m *MockStore) PutWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	return m.Put(ctx, key, value)
+}
+
+func (m *MockStore) GetTTL(ctx context.Context, key string) (time.Duration, error) {
+	return 0, nil
+}
+
+func (m *MockStore) SetTTL(ctx context.Context, key string, ttl time.Duration) error {
+	return nil
+}
+
 func TestNewFIFOQueue(t *testing.T) {
 	t.Run("ValidConfig", func(t *testing.T) {
 		store := NewMockStore()

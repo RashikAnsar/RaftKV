@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -48,9 +49,12 @@ type ListResult struct {
 type Store interface {
 	Get(ctx context.Context, key string) ([]byte, error)
 	Put(ctx context.Context, key string, value []byte) error
+	PutWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
 	List(ctx context.Context, prefix string, limit int) ([]string, error)
 	ListWithOptions(ctx context.Context, opts ListOptions) (*ListResult, error)
+	GetTTL(ctx context.Context, key string) (time.Duration, error)
+	SetTTL(ctx context.Context, key string, ttl time.Duration) error
 	Snapshot(ctx context.Context) (string, error)
 	Restore(ctx context.Context, snapshotPath string) error
 	Stats() Stats

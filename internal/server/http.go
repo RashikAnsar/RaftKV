@@ -161,12 +161,14 @@ func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64, co
 
 		// Read operations (any authenticated user)
 		keyRouter.HandleFunc("/{key}", s.limitRequestSize(s.handleGet, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
+		keyRouter.HandleFunc("/{key}/ttl", s.limitRequestSize(s.handleGetTTL, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 		keyRouter.HandleFunc("", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 
 		// Write operations (require write role)
 		writeRouter := keyRouter.PathPrefix("").Subrouter()
 		writeRouter.Use(authMiddleware.RequireWrite())
 		writeRouter.HandleFunc("/{key}", s.limitRequestSize(s.handlePut, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
+		writeRouter.HandleFunc("/{key}/ttl", s.limitRequestSize(s.handleSetTTL, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
 		writeRouter.HandleFunc("/{key}", s.limitRequestSize(s.handleDelete, maxRequestSize)).Methods(http.MethodDelete, http.MethodOptions)
 
 		// Admin operations (require admin role)
@@ -182,7 +184,9 @@ func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64, co
 	} else {
 		// No authentication - open access
 		router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handleGet, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
+		router.HandleFunc("/keys/{key}/ttl", s.limitRequestSize(s.handleGetTTL, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 		router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handlePut, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
+		router.HandleFunc("/keys/{key}/ttl", s.limitRequestSize(s.handleSetTTL, maxRequestSize)).Methods(http.MethodPut, http.MethodOptions)
 		router.HandleFunc("/keys/{key}", s.limitRequestSize(s.handleDelete, maxRequestSize)).Methods(http.MethodDelete, http.MethodOptions)
 		router.HandleFunc("/keys", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 		router.HandleFunc("/admin/snapshot", s.limitRequestSize(s.handleSnapshot, maxRequestSize)).Methods(http.MethodPost, http.MethodOptions)
@@ -233,7 +237,7 @@ func (s *HTTPServer) handleGet(w http.ResponseWriter, r *http.Request) {
 	w.Write(value)
 }
 
-// handlePut stores a key-value pair
+// handlePut stores a key-value pair with optional TTL
 func (s *HTTPServer) handlePut(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key := vars["key"]
@@ -250,13 +254,41 @@ func (s *HTTPServer) handlePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.Put(r.Context(), key, value); err != nil {
-		s.logger.Error("Failed to put key",
-			zap.String("key", key),
-			zap.Error(err),
-		)
-		s.respondError(w, http.StatusInternalServerError, "internal error")
-		return
+	// Check for TTL query parameter
+	ttlStr := r.URL.Query().Get("ttl")
+	if ttlStr != "" {
+		// Parse TTL duration (e.g., "10s", "5m", "1h")
+		ttl, err := time.ParseDuration(ttlStr)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, "invalid ttl format (use duration format like '10s', '5m', '1h')")
+			return
+		}
+
+		if ttl <= 0 {
+			s.respondError(w, http.StatusBadRequest, "ttl must be positive")
+			return
+		}
+
+		// Store with TTL
+		if err := s.store.PutWithTTL(r.Context(), key, value, ttl); err != nil {
+			s.logger.Error("Failed to put key with TTL",
+				zap.String("key", key),
+				zap.Duration("ttl", ttl),
+				zap.Error(err),
+			)
+			s.respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	} else {
+		// Store without TTL
+		if err := s.store.Put(r.Context(), key, value); err != nil {
+			s.logger.Error("Failed to put key",
+				zap.String("key", key),
+				zap.Error(err),
+			)
+			s.respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -282,6 +314,96 @@ func (s *HTTPServer) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleGetTTL returns the remaining TTL for a key
+func (s *HTTPServer) handleGetTTL(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["key"]
+
+	if key == "" {
+		s.respondError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	ttl, err := s.store.GetTTL(r.Context(), key)
+	if err == storage.ErrKeyNotFound {
+		s.respondError(w, http.StatusNotFound, "key not found")
+		return
+	}
+	if err != nil {
+		s.logger.Error("Failed to get TTL",
+			zap.String("key", key),
+			zap.Error(err),
+		)
+		s.respondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	response := map[string]interface{}{
+		"key": key,
+	}
+
+	// If TTL is 0, it means no expiration
+	if ttl == 0 {
+		response["ttl"] = nil
+		response["message"] = "no expiration set"
+	} else {
+		response["ttl"] = ttl.String()
+		response["ttl_seconds"] = int64(ttl.Seconds())
+	}
+
+	s.respondJSON(w, http.StatusOK, response)
+}
+
+// handleSetTTL updates the TTL for an existing key
+func (s *HTTPServer) handleSetTTL(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	key := vars["key"]
+
+	if key == "" {
+		s.respondError(w, http.StatusBadRequest, "key is required")
+		return
+	}
+
+	// Get TTL from query parameter
+	ttlStr := r.URL.Query().Get("ttl")
+	if ttlStr == "" {
+		s.respondError(w, http.StatusBadRequest, "ttl query parameter is required")
+		return
+	}
+
+	// Parse TTL duration
+	ttl, err := time.ParseDuration(ttlStr)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, "invalid ttl format (use duration format like '10s', '5m', '1h')")
+		return
+	}
+
+	if ttl <= 0 {
+		s.respondError(w, http.StatusBadRequest, "ttl must be positive")
+		return
+	}
+
+	// Set TTL
+	if err := s.store.SetTTL(r.Context(), key, ttl); err == storage.ErrKeyNotFound {
+		s.respondError(w, http.StatusNotFound, "key not found")
+		return
+	} else if err != nil {
+		s.logger.Error("Failed to set TTL",
+			zap.String("key", key),
+			zap.Duration("ttl", ttl),
+			zap.Error(err),
+		)
+		s.respondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	s.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"key":     key,
+		"ttl":     ttl.String(),
+		"message": "TTL updated successfully",
+	})
 }
 
 // handleList lists keys by prefix with pagination support
@@ -417,15 +539,18 @@ func (s *HTTPServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 		"service": "RaftKV",
 		"version": "1.0.0",
 		"endpoints": map[string]string{
-			"GET /keys/{key}":      "Get value",
-			"PUT /keys/{key}":      "Put value",
-			"DELETE /keys/{key}":   "Delete key",
-			"GET /keys?prefix=":    "List keys",
-			"POST /admin/snapshot": "Create snapshot",
-			"GET /health":          "Health check",
-			"GET /ready":           "Readiness check",
-			"GET /stats":           "Statistics",
-			"GET /metrics":         "Prometheus metrics",
+			"GET /keys/{key}":          "Get value",
+			"PUT /keys/{key}":          "Put value",
+			"PUT /keys/{key}?ttl=10s":  "Put value with TTL",
+			"DELETE /keys/{key}":       "Delete key",
+			"GET /keys/{key}/ttl":      "Get remaining TTL",
+			"PUT /keys/{key}/ttl?ttl=": "Set/Update TTL",
+			"GET /keys?prefix=":        "List keys",
+			"POST /admin/snapshot":     "Create snapshot",
+			"GET /health":              "Health check",
+			"GET /ready":               "Readiness check",
+			"GET /stats":               "Statistics",
+			"GET /metrics":             "Prometheus metrics",
 		},
 	})
 }

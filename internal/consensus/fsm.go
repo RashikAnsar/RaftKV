@@ -21,10 +21,11 @@ const (
 )
 
 type Command struct {
-	Op              string `json:"op"`
-	Key             string `json:"key"`
-	Value           []byte `json:"value"`
-	ExpectedVersion uint64 `json:"expected_version,omitempty"` // For CAS operations
+	Op              string        `json:"op"`
+	Key             string        `json:"key"`
+	Value           []byte        `json:"value"`
+	ExpectedVersion uint64        `json:"expected_version,omitempty"` // For CAS operations
+	TTL             time.Duration `json:"ttl,omitempty"`              // For TTL operations (0 = no expiration)
 }
 
 // CASResult is returned by CAS operations
@@ -65,18 +66,28 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	}
 
 	// For CAS operations, encode the expected version into the value
+	// For Put operations with TTL, encode the TTL into the value
 	value := cmd.Value
+	op := cmd.Op
+
 	if cmd.Op == OpTypeCAS {
 		// Encode: expectedVersion (8 bytes) + newValue
 		casValue := make([]byte, 8+len(cmd.Value))
 		binary.BigEndian.PutUint64(casValue[0:8], cmd.ExpectedVersion)
 		copy(casValue[8:], cmd.Value)
 		value = casValue
+	} else if cmd.Op == OpTypePut && cmd.TTL > 0 {
+		// Encode: TTL in nanoseconds (8 bytes) + newValue
+		ttlValue := make([]byte, 8+len(cmd.Value))
+		binary.BigEndian.PutUint64(ttlValue[0:8], uint64(cmd.TTL.Nanoseconds()))
+		copy(ttlValue[8:], cmd.Value)
+		value = ttlValue
+		op = "put_ttl" // Use different operation type to distinguish
 	}
 
 	// Use ApplyRaftEntry with context
 	ctx := context.Background()
-	casResult, err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, cmd.Op, cmd.Key, value)
+	casResult, err := f.store.ApplyRaftEntry(ctx, log.Index, log.Term, op, cmd.Key, value)
 	if err != nil {
 		f.logger.Error("Failed to apply Raft entry",
 			zap.String("op", cmd.Op),

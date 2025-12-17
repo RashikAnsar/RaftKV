@@ -190,6 +190,11 @@ func (s *GRPCServer) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutRespon
 		Value: req.Value,
 	}
 
+	// Handle TTL if provided
+	if req.TtlSeconds > 0 {
+		cmd.TTL = time.Duration(req.TtlSeconds) * time.Second
+	}
+
 	if err := s.raftNode.Apply(cmd, 5*time.Second); err != nil {
 		s.logger.Error("Failed to apply PUT command",
 			zap.String("key", req.Key),
@@ -542,6 +547,108 @@ func (s *GRPCServer) GetElectionHistory(ctx context.Context, req *pb.ElectionHis
 	return &pb.ElectionHistoryResponse{
 		Elections: pbEvents,
 		Count:     int32(len(pbEvents)),
+	}, nil
+}
+
+// GetTTL returns the remaining TTL for a key
+func (s *GRPCServer) GetTTL(ctx context.Context, req *pb.GetTTLRequest) (*pb.GetTTLResponse, error) {
+	// Validate request
+	if req.Key == "" {
+		return nil, status.Error(codes.InvalidArgument, "key cannot be empty")
+	}
+
+	// Get TTL from store
+	ttl, err := s.raftNode.GetTTL(ctx, req.Key)
+	if err != nil {
+		if err.Error() == "key not found" || err.Error() == storage.ErrKeyNotFound.Error() {
+			return &pb.GetTTLResponse{
+				TtlSeconds: -1,
+				HasTtl:     false,
+				Error:      "key not found",
+			}, nil
+		}
+		s.logger.Error("Failed to get TTL",
+			zap.String("key", req.Key),
+			zap.Error(err),
+		)
+		return &pb.GetTTLResponse{
+			TtlSeconds: -1,
+			HasTtl:     false,
+			Error:      err.Error(),
+		}, status.Error(codes.Internal, "failed to get TTL")
+	}
+
+	// If TTL is 0, it means no expiration
+	if ttl == 0 {
+		return &pb.GetTTLResponse{
+			TtlSeconds: 0,
+			HasTtl:     false,
+		}, nil
+	}
+
+	return &pb.GetTTLResponse{
+		TtlSeconds: int64(ttl.Seconds()),
+		HasTtl:     true,
+	}, nil
+}
+
+// SetTTL updates the TTL for an existing key
+func (s *GRPCServer) SetTTL(ctx context.Context, req *pb.SetTTLRequest) (*pb.SetTTLResponse, error) {
+	start := time.Now()
+	defer func() {
+		if s.metrics != nil {
+			duration := time.Since(start).Seconds()
+			s.metrics.RecordStorageOperation("set_ttl", "success", duration)
+		}
+	}()
+
+	// Validate request
+	if req.Key == "" {
+		return nil, status.Error(codes.InvalidArgument, "key cannot be empty")
+	}
+
+	if req.TtlSeconds <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "ttl_seconds must be positive")
+	}
+
+	// Check if we're the leader
+	if !s.raftNode.IsLeader() {
+		leaderAddr, _ := s.raftNode.GetLeader()
+		return &pb.SetTTLResponse{
+			Success: false,
+			Error:   "not the leader",
+			Leader:  leaderAddr,
+		}, status.Errorf(codes.FailedPrecondition, "not the leader, redirect to: %s", leaderAddr)
+	}
+
+	// SetTTL through store (this doesn't go through Raft currently)
+	// Note: For production, you might want to replicate SetTTL operations through Raft
+	ttl := time.Duration(req.TtlSeconds) * time.Second
+	if err := s.raftNode.SetTTL(ctx, req.Key, ttl); err != nil {
+		if err.Error() == "key not found" || err.Error() == storage.ErrKeyNotFound.Error() {
+			return &pb.SetTTLResponse{
+				Success: false,
+				Error:   "key not found",
+			}, status.Error(codes.NotFound, "key not found")
+		}
+
+		s.logger.Error("Failed to set TTL",
+			zap.String("key", req.Key),
+			zap.Int64("ttl_seconds", req.TtlSeconds),
+			zap.Error(err),
+		)
+		leaderAddr, _ := s.raftNode.GetLeader()
+		return &pb.SetTTLResponse{
+			Success: false,
+			Error:   err.Error(),
+			Leader:  leaderAddr,
+		}, status.Error(codes.Internal, "failed to set TTL")
+	}
+
+	leaderAddr, _ := s.raftNode.GetLeader()
+	return &pb.SetTTLResponse{
+		Success: true,
+		Leader:  leaderAddr,
 	}, nil
 }
 

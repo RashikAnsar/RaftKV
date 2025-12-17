@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.33.1
-// source: api/proto/kv.proto
+// source: kv.proto
 
 package proto
 
@@ -31,6 +31,8 @@ const (
 	KVStore_Stepdown_FullMethodName           = "/kvstore.KVStore/Stepdown"
 	KVStore_TransferLeadership_FullMethodName = "/kvstore.KVStore/TransferLeadership"
 	KVStore_GetElectionHistory_FullMethodName = "/kvstore.KVStore/GetElectionHistory"
+	KVStore_GetTTL_FullMethodName             = "/kvstore.KVStore/GetTTL"
+	KVStore_SetTTL_FullMethodName             = "/kvstore.KVStore/SetTTL"
 )
 
 // KVStoreClient is the client API for KVStore service.
@@ -63,6 +65,10 @@ type KVStoreClient interface {
 	TransferLeadership(ctx context.Context, in *TransferLeadershipRequest, opts ...grpc.CallOption) (*TransferLeadershipResponse, error)
 	// GetElectionHistory returns the history of leadership changes
 	GetElectionHistory(ctx context.Context, in *ElectionHistoryRequest, opts ...grpc.CallOption) (*ElectionHistoryResponse, error)
+	// GetTTL returns the remaining TTL for a key
+	GetTTL(ctx context.Context, in *GetTTLRequest, opts ...grpc.CallOption) (*GetTTLResponse, error)
+	// SetTTL updates the TTL for an existing key
+	SetTTL(ctx context.Context, in *SetTTLRequest, opts ...grpc.CallOption) (*SetTTLResponse, error)
 }
 
 type kVStoreClient struct {
@@ -193,6 +199,26 @@ func (c *kVStoreClient) GetElectionHistory(ctx context.Context, in *ElectionHist
 	return out, nil
 }
 
+func (c *kVStoreClient) GetTTL(ctx context.Context, in *GetTTLRequest, opts ...grpc.CallOption) (*GetTTLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTTLResponse)
+	err := c.cc.Invoke(ctx, KVStore_GetTTL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *kVStoreClient) SetTTL(ctx context.Context, in *SetTTLRequest, opts ...grpc.CallOption) (*SetTTLResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetTTLResponse)
+	err := c.cc.Invoke(ctx, KVStore_SetTTL_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // KVStoreServer is the server API for KVStore service.
 // All implementations must embed UnimplementedKVStoreServer
 // for forward compatibility.
@@ -223,6 +249,10 @@ type KVStoreServer interface {
 	TransferLeadership(context.Context, *TransferLeadershipRequest) (*TransferLeadershipResponse, error)
 	// GetElectionHistory returns the history of leadership changes
 	GetElectionHistory(context.Context, *ElectionHistoryRequest) (*ElectionHistoryResponse, error)
+	// GetTTL returns the remaining TTL for a key
+	GetTTL(context.Context, *GetTTLRequest) (*GetTTLResponse, error)
+	// SetTTL updates the TTL for an existing key
+	SetTTL(context.Context, *SetTTLRequest) (*SetTTLResponse, error)
 	mustEmbedUnimplementedKVStoreServer()
 }
 
@@ -268,6 +298,12 @@ func (UnimplementedKVStoreServer) TransferLeadership(context.Context, *TransferL
 }
 func (UnimplementedKVStoreServer) GetElectionHistory(context.Context, *ElectionHistoryRequest) (*ElectionHistoryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetElectionHistory not implemented")
+}
+func (UnimplementedKVStoreServer) GetTTL(context.Context, *GetTTLRequest) (*GetTTLResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTTL not implemented")
+}
+func (UnimplementedKVStoreServer) SetTTL(context.Context, *SetTTLRequest) (*SetTTLResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetTTL not implemented")
 }
 func (UnimplementedKVStoreServer) mustEmbedUnimplementedKVStoreServer() {}
 func (UnimplementedKVStoreServer) testEmbeddedByValue()                 {}
@@ -506,6 +542,42 @@ func _KVStore_GetElectionHistory_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KVStore_GetTTL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTTLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).GetTTL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_GetTTL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).GetTTL(ctx, req.(*GetTTLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KVStore_SetTTL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetTTLRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KVStoreServer).SetTTL(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KVStore_SetTTL_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KVStoreServer).SetTTL(ctx, req.(*SetTTLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // KVStore_ServiceDesc is the grpc.ServiceDesc for KVStore service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -561,7 +633,15 @@ var KVStore_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetElectionHistory",
 			Handler:    _KVStore_GetElectionHistory_Handler,
 		},
+		{
+			MethodName: "GetTTL",
+			Handler:    _KVStore_GetTTL_Handler,
+		},
+		{
+			MethodName: "SetTTL",
+			Handler:    _KVStore_SetTTL_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/proto/kv.proto",
+	Metadata: "kv.proto",
 }

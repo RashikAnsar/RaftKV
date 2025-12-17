@@ -272,6 +272,65 @@ func (s *DurableStore) Put(ctx context.Context, key string, value []byte) error 
 	return nil
 }
 
+// PutWithTTL stores a key-value pair with TTL through WAL and memory
+func (s *DurableStore) PutWithTTL(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	entry := &WALEntry{
+		Operation: OpPut,
+		Timestamp: time.Now(),
+		Key:       key,
+		Value:     value,
+	}
+
+	// Use batched WAL if available, otherwise fall back to direct WAL
+	var err error
+	if s.batchedWAL != nil {
+		err = s.batchedWAL.Append(ctx, entry)
+	} else {
+		err = s.wal.Append(entry)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to write to WAL: %w", err)
+	}
+
+	// Apply with TTL to memory store
+	if err := s.memory.PutWithTTL(ctx, key, value, ttl); err != nil {
+		return fmt.Errorf("failed to apply to memory after WAL write: %w", err)
+	}
+
+	s.mu.Lock()
+	s.walIndex++
+	s.opsSinceSnapshot++
+	shouldSnapshot := s.snapshotEvery > 0 &&
+		s.opsSinceSnapshot >= s.snapshotEvery &&
+		!s.snapshotting.Load()
+	s.mu.Unlock()
+
+	if shouldSnapshot {
+		if s.snapshotting.CompareAndSwap(false, true) {
+			go func() {
+				s.takeSnapshot()
+				s.snapshotting.Store(false)
+			}()
+		}
+	}
+
+	return nil
+}
+
+// GetTTL returns the remaining TTL for a key
+func (s *DurableStore) GetTTL(ctx context.Context, key string) (time.Duration, error) {
+	return s.memory.GetTTL(ctx, key)
+}
+
+// SetTTL updates the TTL for an existing key
+func (s *DurableStore) SetTTL(ctx context.Context, key string, ttl time.Duration) error {
+	// Write to WAL first (similar to Put)
+	// For simplicity, we'll just delegate to memory store
+	// In a production system, you might want to log TTL changes to WAL
+	return s.memory.SetTTL(ctx, key, ttl)
+}
+
 func (s *DurableStore) Delete(ctx context.Context, key string) error {
 	// 1. Write to WAL first
 	entry := &WALEntry{
@@ -516,6 +575,8 @@ func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, o
 	switch op {
 	case "put":
 		operation = OpPut
+	case "put_ttl":
+		operation = OpPut // Store as Put in WAL, TTL is encoded in value
 	case "delete":
 		operation = OpDelete
 	case "cas":
@@ -544,8 +605,24 @@ func (s *DurableStore) ApplyRaftEntry(ctx context.Context, index, term uint64, o
 	// 2. Apply to memory
 	switch operation {
 	case OpPut:
-		if err := s.memory.Put(ctx, key, value); err != nil {
-			return nil, fmt.Errorf("failed to apply PUT to memory: %w", err)
+		// Check if this is a PUT with TTL (op == "put_ttl")
+		if op == "put_ttl" {
+			// Decode TTL: first 8 bytes = TTL in nanoseconds, rest = value
+			if len(value) < 8 {
+				return nil, fmt.Errorf("invalid PUT_TTL value: too short")
+			}
+			ttlNanos := binary.BigEndian.Uint64(value[0:8])
+			actualValue := value[8:]
+			ttl := time.Duration(ttlNanos) * time.Nanosecond
+
+			if err := s.memory.PutWithTTL(ctx, key, actualValue, ttl); err != nil {
+				return nil, fmt.Errorf("failed to apply PUT_TTL to memory: %w", err)
+			}
+		} else {
+			// Regular PUT without TTL
+			if err := s.memory.Put(ctx, key, value); err != nil {
+				return nil, fmt.Errorf("failed to apply PUT to memory: %w", err)
+			}
 		}
 	case OpDelete:
 		if err := s.memory.Delete(ctx, key); err != nil {

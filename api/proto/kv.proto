@@ -41,6 +41,12 @@ service KVStore {
 
   // GetElectionHistory returns the history of leadership changes
   rpc GetElectionHistory(ElectionHistoryRequest) returns (ElectionHistoryResponse);
+
+  // GetTTL returns the remaining TTL for a key
+  rpc GetTTL(GetTTLRequest) returns (GetTTLResponse);
+
+  // SetTTL updates the TTL for an existing key
+  rpc SetTTL(SetTTLRequest) returns (SetTTLResponse);
 }
 
 // GetRequest contains the key to retrieve
@@ -62,6 +68,8 @@ message GetResponse {
 message PutRequest {
   string key = 1;
   bytes value = 2;
+  // Optional TTL in seconds (0 = no expiration)
+  int64 ttl_seconds = 3;
 }
 
 // PutResponse confirms the put operation
@@ -225,4 +233,29 @@ message ElectionEvent {
 message ElectionHistoryResponse {
   repeated ElectionEvent elections = 1;
   int32 count = 2;
+}
+
+// GetTTLRequest contains the key to get TTL for
+message GetTTLRequest {
+  string key = 1;
+}
+
+// GetTTLResponse contains the remaining TTL
+message GetTTLResponse {
+  int64 ttl_seconds = 1; // Remaining TTL in seconds (0 = no expiration, -1 = key not found)
+  bool has_ttl = 2;      // True if key has a TTL set
+  string error = 3;      // Error message if any
+}
+
+// SetTTLRequest contains the key and new TTL
+message SetTTLRequest {
+  string key = 1;
+  int64 ttl_seconds = 2; // TTL in seconds (must be > 0)
+}
+
+// SetTTLResponse confirms the SetTTL operation
+message SetTTLResponse {
+  bool success = 1;
+  string error = 2;
+  string leader = 3; // The leader that processed the request
 }

@@ -57,7 +57,8 @@ type HTTPServerConfig struct {
 	JWTManager    *auth.JWTManager
 
 	// Cluster configuration
-	RaftNode *consensus.RaftNode // Optional Raft node for cluster operations
+	RaftNode     *consensus.RaftNode // Optional Raft node for cluster operations
+	WatchManager *watch.WatchManager // Optional watch manager for watch functionality
 }
 
 func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
@@ -73,10 +74,11 @@ func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
 	}
 
 	srv := &HTTPServer{
-		store:    config.Store,
-		logger:   config.Logger,
-		metrics:  config.Metrics,
-		raftNode: config.RaftNode,
+		store:        config.Store,
+		logger:       config.Logger,
+		metrics:      config.Metrics,
+		raftNode:     config.RaftNode,
+		watchManager: config.WatchManager,
 	}
 
 	// Initialize cluster handlers if RaftNode is provided

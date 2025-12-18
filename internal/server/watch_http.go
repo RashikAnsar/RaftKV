@@ -46,20 +46,20 @@ func (s *HTTPServer) handleWatch(w http.ResponseWriter, r *http.Request) {
 		zap.String("remote_addr", r.RemoteAddr),
 	)
 
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow CORS for browser clients
-	w.Header().Set("X-Accel-Buffering", "no")           // Disable nginx buffering
-
-	// Get flusher for streaming
+	// Get flusher for streaming - check BEFORE setting headers
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		s.logger.Error("ResponseWriter does not support flushing")
 		s.respondError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow CORS for browser clients
+	w.Header().Set("X-Accel-Buffering", "no")           // Disable nginx buffering
 
 	// Send initial comment to establish connection
 	fmt.Fprintf(w, ": SSE watch stream established\n\n")

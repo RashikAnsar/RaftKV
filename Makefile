@@ -57,6 +57,7 @@ test-compaction:
 
 test-integration:
 	@echo "Running integration tests..."
+	$(GO) clean -testcache
 	$(GO) test -v -timeout=300s -tags integration ./test/integration
 
 test-integration-fast:

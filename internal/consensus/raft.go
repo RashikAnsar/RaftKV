@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/raft"
 	"go.uber.org/zap"
 
+	"github.com/RashikAnsar/raftkv/internal/cdc"
 	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
 )
@@ -493,6 +494,12 @@ func (r *RaftNode) TransferLeadership(targetNodeID string) error {
 // GetElectionHistory returns the history of leadership changes
 func (r *RaftNode) GetElectionHistory() []ElectionEvent {
 	return r.leadershipManager.GetElectionHistory()
+}
+
+// SetCDCPublisher sets the CDC publisher on the FSM
+// This is used for change data capture and watch functionality
+func (r *RaftNode) SetCDCPublisher(publisher *cdc.Publisher) {
+	r.fsm.SetCDCPublisher(publisher)
 }
 
 // hcLogger adapts zap.Logger to hashicorp/go-hclog.Logger

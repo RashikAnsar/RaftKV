@@ -17,6 +17,7 @@ import (
 	"github.com/RashikAnsar/raftkv/internal/observability"
 	"github.com/RashikAnsar/raftkv/internal/security"
 	"github.com/RashikAnsar/raftkv/internal/storage"
+	"github.com/RashikAnsar/raftkv/internal/watch"
 )
 
 type HTTPServer struct {
@@ -27,6 +28,7 @@ type HTTPServer struct {
 	metrics         *observability.Metrics
 	raftNode        *consensus.RaftNode
 	clusterHandlers *ClusterHandlers
+	watchManager    *watch.WatchManager
 
 	// TLS configuration
 	tlsEnabled bool
@@ -55,7 +57,8 @@ type HTTPServerConfig struct {
 	JWTManager    *auth.JWTManager
 
 	// Cluster configuration
-	RaftNode *consensus.RaftNode // Optional Raft node for cluster operations
+	RaftNode     *consensus.RaftNode // Optional Raft node for cluster operations
+	WatchManager *watch.WatchManager // Optional watch manager for watch functionality
 }
 
 func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
@@ -71,10 +74,11 @@ func NewHTTPServer(config HTTPServerConfig) *HTTPServer {
 	}
 
 	srv := &HTTPServer{
-		store:    config.Store,
-		logger:   config.Logger,
-		metrics:  config.Metrics,
-		raftNode: config.RaftNode,
+		store:        config.Store,
+		logger:       config.Logger,
+		metrics:      config.Metrics,
+		raftNode:     config.RaftNode,
+		watchManager: config.WatchManager,
 	}
 
 	// Initialize cluster handlers if RaftNode is provided
@@ -164,6 +168,9 @@ func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64, co
 		keyRouter.HandleFunc("/{key}/ttl", s.limitRequestSize(s.handleGetTTL, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 		keyRouter.HandleFunc("", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 
+		// Watch endpoint (SSE streaming, any authenticated user)
+		router.HandleFunc("/watch", s.handleWatch).Methods(http.MethodGet, http.MethodOptions)
+
 		// Write operations (require write role)
 		writeRouter := keyRouter.PathPrefix("").Subrouter()
 		writeRouter.Use(authMiddleware.RequireWrite())
@@ -191,6 +198,7 @@ func (s *HTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64, co
 		router.HandleFunc("/keys", s.limitRequestSize(s.handleList, maxRequestSize)).Methods(http.MethodGet, http.MethodOptions)
 		router.HandleFunc("/admin/snapshot", s.limitRequestSize(s.handleSnapshot, maxRequestSize)).Methods(http.MethodPost, http.MethodOptions)
 		router.HandleFunc("/stats", s.handleStats).Methods(http.MethodGet, http.MethodOptions)
+		router.HandleFunc("/watch", s.handleWatch).Methods(http.MethodGet, http.MethodOptions)
 	}
 
 	// Register cluster handlers if RaftNode is available
@@ -589,4 +597,9 @@ func (s *HTTPServer) Start() error {
 func (s *HTTPServer) Shutdown(ctx context.Context) error {
 	s.logger.Info("Shutting down HTTP server")
 	return s.server.Shutdown(ctx)
+}
+
+// SetWatchManager sets the watch manager for the HTTP server
+func (s *HTTPServer) SetWatchManager(wm *watch.WatchManager) {
+	s.watchManager = wm
 }

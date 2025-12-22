@@ -1,8 +1,9 @@
-.PHONY: all run build build-cli test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test k8s-build k8s-load k8s-install k8s-install-prod k8s-uninstall k8s-upgrade k8s-restart k8s-status k8s-logs k8s-shell k8s-port-forward k8s-clean k8s-deploy k8s-redeploy test-kubernetes-deployment test-kubernetes-deployment-quick
+.PHONY: all run build build-cli build-kvpserver run-kvpserver test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test k8s-build k8s-load k8s-install k8s-install-prod k8s-uninstall k8s-upgrade k8s-restart k8s-status k8s-logs k8s-shell k8s-port-forward k8s-clean k8s-deploy k8s-redeploy test-kubernetes-deployment test-kubernetes-deployment-quick
 
 # Variables
 BINARY_NAME=kvstore
 CLI_NAME=kvcli
+KVP_NAME=kvpserver
 GO=go
 GOFLAGS=-v
 
@@ -42,6 +43,18 @@ build-cli:
 	@echo "Building CLI..."
 	@mkdir -p bin
 	$(GO) build $(GOFLAGS) -o bin/$(CLI_NAME) ./cmd/$(CLI_NAME)
+
+build-kvpserver:
+	@echo "Building KVP server..."
+	@mkdir -p bin
+	$(GO) build $(GOFLAGS) -o bin/$(KVP_NAME) ./cmd/$(KVP_NAME)
+
+run-kvpserver: build-kvpserver
+	@echo "Starting KVP server (Redis-compatible protocol)..."
+	./bin/kvpserver \
+		--addr=:6379 \
+		--log-level=info \
+		--ttl-scan-interval=1m
 
 test:
 	@echo "Running tests..."

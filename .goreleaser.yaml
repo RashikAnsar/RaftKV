@@ -49,6 +49,27 @@ builds:
       - -X main.BuildTime={{.Date}}
       - -X main.GitCommit={{.Commit}}
 
+  - id: kvpserver
+    main: ./cmd/kvpserver
+    binary: kvpserver
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+      - -X main.GitCommit={{.Commit}}
+
 archives:
   - format: tar.gz
     # this name template makes the OS and Arch compatible with the results of uname.

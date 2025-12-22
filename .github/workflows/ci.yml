@@ -11,36 +11,36 @@ permissions:
   pull-requests: write
 
 jobs:
-  # lint:
-  #   name: Lint
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  #     - name: Set up Go
-  #       uses: actions/setup-go@v5
-  #       with:
-  #         go-version: '1.23'
-  #         cache: true
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
 
-  #     - name: Run gofmt
-  #       run: |
-  #         if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-  #           echo "The following files are not formatted:"
-  #           gofmt -s -l .
-  #           exit 1
-  #         fi
+      - name: Run gofmt
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
 
-  #     - name: Run go vet
-  #       run: go vet ./...
+      - name: Run go vet
+        run: go vet ./...
 
-  #     - name: Install golangci-lint
-  #       run: |
-  #         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
 
-  #     - name: Run golangci-lint
-  #       run: $(go env GOPATH)/bin/golangci-lint run --timeout=5m
+      - name: Run golangci-lint
+        run: $(go env GOPATH)/bin/golangci-lint run --timeout=5m
 
   test:
     name: Test
@@ -147,6 +147,17 @@ jobs:
             EXT=".exe"
           fi
           go build -o bin/kvcli-${{ matrix.os }}-${{ matrix.arch }}${EXT} -ldflags="-s -w" ./cmd/kvcli
+
+      - name: Build kvpserver
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          EXT=""
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+          go build -o bin/kvpserver-${{ matrix.os }}-${{ matrix.arch }}${EXT} -ldflags="-s -w" ./cmd/kvpserver
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

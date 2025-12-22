@@ -23,10 +23,10 @@ type Snapshot struct {
 	RaftTerm  uint64 // Raft term at snapshot time
 
 	// Existing fields
-	Index     uint64               // WAL index at snapshot time
-	Timestamp time.Time            // When snapshot was taken
-	KeyCount  int64                // Number of keys
-	Data      map[string][]byte    // Deprecated: Use DataWithVersion instead
+	Index           uint64               // WAL index at snapshot time
+	Timestamp       time.Time            // When snapshot was taken
+	KeyCount        int64                // Number of keys
+	Data            map[string][]byte    // Deprecated: Use DataWithVersion instead
 	DataWithVersion map[string]*KeyValue // All key-value pairs with version info
 }
 

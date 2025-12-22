@@ -21,17 +21,17 @@ type BackupManager struct {
 
 // BackupConfig contains backup configuration
 type BackupConfig struct {
-	CompressionType     CompressionType
-	CompressionLevel    int
-	EncryptionType      EncryptionType
-	EncryptionKey       []byte
-	NodeID              string
-	ClusterID           string
-	Version             string
-	RetentionDays       int
-	MaxBackups          int
-	EnableIncremental   bool
-	BackupPrefix        string
+	CompressionType   CompressionType
+	CompressionLevel  int
+	EncryptionType    EncryptionType
+	EncryptionKey     []byte
+	NodeID            string
+	ClusterID         string
+	Version           string
+	RetentionDays     int
+	MaxBackups        int
+	EnableIncremental bool
+	BackupPrefix      string
 }
 
 // NewBackupManager creates a new backup manager
@@ -259,8 +259,8 @@ func (m *BackupManager) Close() error {
 
 // checksumReader wraps a reader and calculates checksum
 type checksumReader struct {
-	reader    io.Reader
-	hash      interface {
+	reader io.Reader
+	hash   interface {
 		io.Writer
 		Sum([]byte) []byte
 	}

@@ -180,11 +180,11 @@ type migrationWorker struct {
 	cancel context.CancelFunc
 
 	// Progress tracking
-	mu          sync.RWMutex
-	keysCopied  int64
-	totalKeys   int64
-	errorCount  int
-	lastError   string
+	mu         sync.RWMutex
+	keysCopied int64
+	totalKeys  int64
+	errorCount int
+	lastError  string
 }
 
 // run executes the migration process

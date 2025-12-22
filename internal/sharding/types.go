@@ -103,60 +103,60 @@ type ShardInfo struct {
 	LeaderNodeID  string     `json:"leader_node_id"` // Current leader
 	KeyRangeStart uint32     `json:"key_range_start"`
 	KeyRangeEnd   uint32     `json:"key_range_end"`
-	DataSize      int64      `json:"data_size"`  // Bytes
-	KeyCount      int64      `json:"key_count"`  // Number of keys
+	DataSize      int64      `json:"data_size"` // Bytes
+	KeyCount      int64      `json:"key_count"` // Number of keys
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // NodeInfo contains information about a node
 type NodeInfo struct {
-	ID           string    `json:"id"`
-	Address      string    `json:"address"`       // Host:Port
-	State        NodeState `json:"state"`
-	Capacity     int64     `json:"capacity"`      // Max data size in bytes
-	Used         int64     `json:"used"`          // Current usage in bytes
-	Load         float64   `json:"load"`          // Current load (0.0-1.0)
-	Shards       []int     `json:"shards"`        // Shard IDs hosted on this node
+	ID            string    `json:"id"`
+	Address       string    `json:"address"` // Host:Port
+	State         NodeState `json:"state"`
+	Capacity      int64     `json:"capacity"` // Max data size in bytes
+	Used          int64     `json:"used"`     // Current usage in bytes
+	Load          float64   `json:"load"`     // Current load (0.0-1.0)
+	Shards        []int     `json:"shards"`   // Shard IDs hosted on this node
 	LastHeartbeat time.Time `json:"last_heartbeat"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // MigrationInfo contains information about a shard migration
 type MigrationInfo struct {
-	ID            string         `json:"id"`
-	ShardID       int            `json:"shard_id"`
-	SourceNodes   []string       `json:"source_nodes"`
-	TargetNodes   []string       `json:"target_nodes"`
-	State         MigrationState `json:"state"`
-	Progress      float64        `json:"progress"`       // 0.0-1.0
-	KeysCopied    int64          `json:"keys_copied"`
-	TotalKeys     int64          `json:"total_keys"`
-	BytesCopied   int64          `json:"bytes_copied"`
-	TotalBytes    int64          `json:"total_bytes"`
-	StartTime     time.Time      `json:"start_time"`
-	EndTime       *time.Time     `json:"end_time,omitempty"`
-	LastCheckpoint *Checkpoint   `json:"last_checkpoint,omitempty"`
-	Error         string         `json:"error,omitempty"`
+	ID             string         `json:"id"`
+	ShardID        int            `json:"shard_id"`
+	SourceNodes    []string       `json:"source_nodes"`
+	TargetNodes    []string       `json:"target_nodes"`
+	State          MigrationState `json:"state"`
+	Progress       float64        `json:"progress"` // 0.0-1.0
+	KeysCopied     int64          `json:"keys_copied"`
+	TotalKeys      int64          `json:"total_keys"`
+	BytesCopied    int64          `json:"bytes_copied"`
+	TotalBytes     int64          `json:"total_bytes"`
+	StartTime      time.Time      `json:"start_time"`
+	EndTime        *time.Time     `json:"end_time,omitempty"`
+	LastCheckpoint *Checkpoint    `json:"last_checkpoint,omitempty"`
+	Error          string         `json:"error,omitempty"`
 }
 
 // Checkpoint represents a point-in-time snapshot for migration resumption
 type Checkpoint struct {
-	RaftIndex uint64    `json:"raft_index"`
-	Timestamp time.Time `json:"timestamp"`
-	KeysCopied int64     `json:"keys_copied"`
-	BytesCopied int64    `json:"bytes_copied"`
+	RaftIndex   uint64    `json:"raft_index"`
+	Timestamp   time.Time `json:"timestamp"`
+	KeysCopied  int64     `json:"keys_copied"`
+	BytesCopied int64     `json:"bytes_copied"`
 }
 
 // ShardMap contains the complete shard topology
 type ShardMap struct {
 	mu         sync.RWMutex
-	Version    uint64                   `json:"version"`    // Monotonically increasing
-	Shards     map[int]*ShardInfo       `json:"shards"`     // ShardID → Info
-	Nodes      map[string]*NodeInfo     `json:"nodes"`      // NodeID → Info
+	Version    uint64                    `json:"version"`    // Monotonically increasing
+	Shards     map[int]*ShardInfo        `json:"shards"`     // ShardID → Info
+	Nodes      map[string]*NodeInfo      `json:"nodes"`      // NodeID → Info
 	Migrations map[string]*MigrationInfo `json:"migrations"` // MigrationID → Info
-	UpdatedAt  time.Time                `json:"updated_at"`
+	UpdatedAt  time.Time                 `json:"updated_at"`
 }
 
 // NewShardMap creates a new empty shard map
@@ -201,9 +201,9 @@ func (sm *ShardMap) GetMigrationForShard(shardID int) *MigrationInfo {
 
 	for _, migration := range sm.Migrations {
 		if migration.ShardID == shardID &&
-		   migration.State != MigrationStateComplete &&
-		   migration.State != MigrationStateFailed &&
-		   migration.State != MigrationStateRolledBack {
+			migration.State != MigrationStateComplete &&
+			migration.State != MigrationStateFailed &&
+			migration.State != MigrationStateRolledBack {
 			return migration
 		}
 	}
@@ -324,8 +324,8 @@ func (sm *ShardMap) GetActiveMigrations() []*MigrationInfo {
 	migrations := make([]*MigrationInfo, 0)
 	for _, migration := range sm.Migrations {
 		if migration.State != MigrationStateComplete &&
-		   migration.State != MigrationStateFailed &&
-		   migration.State != MigrationStateRolledBack {
+			migration.State != MigrationStateFailed &&
+			migration.State != MigrationStateRolledBack {
 			migrations = append(migrations, migration)
 		}
 	}

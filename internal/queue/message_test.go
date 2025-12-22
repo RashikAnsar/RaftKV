@@ -221,8 +221,8 @@ func TestMessage_BuilderPattern(t *testing.T) {
 		WithPriority(10).
 		WithHeader("Content-Type", "application/json").
 		WithHeader("X-Custom", "value").
-		WithScheduledAt(time.Now().Add(1*time.Hour)).
-		WithExpiresAt(time.Now().Add(2*time.Hour))
+		WithScheduledAt(time.Now().Add(1 * time.Hour)).
+		WithExpiresAt(time.Now().Add(2 * time.Hour))
 
 	assert.Equal(t, "test-queue", msg.QueueName)
 	assert.Equal(t, []byte("test"), msg.Body)

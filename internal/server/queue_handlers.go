@@ -65,14 +65,14 @@ func (h *QueueHandlers) handleListQueues(w http.ResponseWriter, r *http.Request)
 
 func (h *QueueHandlers) handleCreateQueue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name              string `json:"name"`
-		Type              string `json:"type"`
-		MaxLength         int    `json:"max_length"`
-		MaxRetries        int    `json:"max_retries"`
-		MessageTTLMs      int64  `json:"message_ttl_ms"`
-		VisibilityTimeoutMs int64 `json:"visibility_timeout_ms"`
-		DLQEnabled        bool   `json:"dlq_enabled"`
-		DLQName           string `json:"dlq_name"`
+		Name                string `json:"name"`
+		Type                string `json:"type"`
+		MaxLength           int    `json:"max_length"`
+		MaxRetries          int    `json:"max_retries"`
+		MessageTTLMs        int64  `json:"message_ttl_ms"`
+		VisibilityTimeoutMs int64  `json:"visibility_timeout_ms"`
+		DLQEnabled          bool   `json:"dlq_enabled"`
+		DLQName             string `json:"dlq_name"`
 	}
 
 	body, err := io.ReadAll(r.Body)

@@ -68,9 +68,9 @@ type Stats struct {
 	KeyCount int64
 
 	// Cache statistics
-	CacheHits       uint64
-	CacheMisses     uint64
-	CacheHitRate    float64
-	CacheSize       int
-	CacheEvictions  uint64
+	CacheHits      uint64
+	CacheMisses    uint64
+	CacheHitRate   float64
+	CacheSize      int
+	CacheEvictions uint64
 }

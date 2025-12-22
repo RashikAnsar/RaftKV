@@ -99,8 +99,8 @@ func LoadRaftTLSConfig(config *TLSConfig) (*tls.Config, error) {
 		// (this is the same cert, satisfying mutual TLS)
 
 		// Both sides: verify peer certificates using the CA pool
-		ClientCAs:  caCertPool, // For verifying client certs when accepting
-		RootCAs:    caCertPool, // For verifying server certs when dialing
+		ClientCAs:  caCertPool,                     // For verifying client certs when accepting
+		RootCAs:    caCertPool,                     // For verifying server certs when dialing
 		ClientAuth: tls.RequireAndVerifyClientCert, // Require mutual TLS
 
 		MinVersion:   config.MinVersion,

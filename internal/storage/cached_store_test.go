@@ -257,13 +257,13 @@ func BenchmarkCachedStore_Get_CacheHit(b *testing.B) {
 
 	// Pre-populate
 	for i := 0; i < 1000; i++ {
-		key := string(rune('a' + (i % 26))) + string(rune('a' + (i/26)%26))
+		key := string(rune('a'+(i%26))) + string(rune('a'+(i/26)%26))
 		cachedStore.Put(ctx, key, []byte("value"))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := string(rune('a' + (i % 26))) + string(rune('a' + (i/26)%26))
+		key := string(rune('a'+(i%26))) + string(rune('a'+(i/26)%26))
 		cachedStore.Get(ctx, key)
 	}
 }
@@ -274,13 +274,13 @@ func BenchmarkMemoryStore_Get_NoCache(b *testing.B) {
 
 	// Pre-populate
 	for i := 0; i < 1000; i++ {
-		key := string(rune('a' + (i % 26))) + string(rune('a' + (i/26)%26))
+		key := string(rune('a'+(i%26))) + string(rune('a'+(i/26)%26))
 		baseStore.Put(ctx, key, []byte("value"))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := string(rune('a' + (i % 26))) + string(rune('a' + (i/26)%26))
+		key := string(rune('a'+(i%26))) + string(rune('a'+(i/26)%26))
 		baseStore.Get(ctx, key)
 	}
 }

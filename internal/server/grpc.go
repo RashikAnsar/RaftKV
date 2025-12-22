@@ -538,11 +538,11 @@ func (s *GRPCServer) GetElectionHistory(ctx context.Context, req *pb.ElectionHis
 	pbEvents := make([]*pb.ElectionEvent, 0, len(history))
 	for _, event := range history {
 		pbEvents = append(pbEvents, &pb.ElectionEvent{
-			TimestampMs:  event.Timestamp.UnixMilli(),
-			OldLeaderId:  event.OldLeaderID,
-			NewLeaderId:  event.NewLeaderID,
-			Term:         event.Term,
-			Reason:       event.Reason,
+			TimestampMs: event.Timestamp.UnixMilli(),
+			OldLeaderId: event.OldLeaderID,
+			NewLeaderId: event.NewLeaderID,
+			Term:        event.Term,
+			Reason:      event.Reason,
 		})
 	}
 

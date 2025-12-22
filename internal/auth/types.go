@@ -55,10 +55,10 @@ type User struct {
 // APIKey represents an API key
 type APIKey struct {
 	ID        string    `json:"id"`
-	Key       string    `json:"key,omitempty"`       // Only shown on creation
-	KeyHash   string    `json:"-"`                   // Never exposed
+	Key       string    `json:"key,omitempty"` // Only shown on creation
+	KeyHash   string    `json:"-"`             // Never exposed
 	UserID    string    `json:"user_id"`
-	Name      string    `json:"name"`                // Description of the key
+	Name      string    `json:"name"` // Description of the key
 	Role      Role      `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

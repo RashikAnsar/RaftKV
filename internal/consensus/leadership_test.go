@@ -31,9 +31,9 @@ func (m *mockRaft) LeaderWithID() (raft.ServerAddress, raft.ServerID) {
 func (m *mockRaft) Stats() map[string]string {
 	if m.stats == nil {
 		return map[string]string{
-			"term":          "5",
-			"commit_index":  "100",
-			"applied_index": "100",
+			"term":           "5",
+			"commit_index":   "100",
+			"applied_index":  "100",
 			"last_log_index": "100",
 			"last_log_term":  "5",
 			"last_contact":   "never",

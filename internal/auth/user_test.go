@@ -579,10 +579,10 @@ func TestUserManager_ConcurrentOperations(t *testing.T) {
 
 func TestUser_HasPermission(t *testing.T) {
 	tests := []struct {
-		name       string
-		userRole   Role
-		required   Role
-		expected   bool
+		name     string
+		userRole Role
+		required Role
+		expected bool
 	}{
 		{
 			name:     "admin has admin permission",

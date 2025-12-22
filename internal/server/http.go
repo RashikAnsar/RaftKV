@@ -530,11 +530,11 @@ func (s *HTTPServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	// Add cache stats if available
 	if stats.CacheHits > 0 || stats.CacheMisses > 0 {
 		response["cache"] = map[string]interface{}{
-			"hits":       stats.CacheHits,
-			"misses":     stats.CacheMisses,
-			"hit_rate":   stats.CacheHitRate,
-			"size":       stats.CacheSize,
-			"evictions":  stats.CacheEvictions,
+			"hits":      stats.CacheHits,
+			"misses":    stats.CacheMisses,
+			"hit_rate":  stats.CacheHitRate,
+			"size":      stats.CacheSize,
+			"evictions": stats.CacheEvictions,
 		}
 	}
 

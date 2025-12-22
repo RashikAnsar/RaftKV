@@ -21,34 +21,34 @@ type WatchRequest struct {
 
 // WatchEvent represents a key-value change event for watchers
 type WatchEvent struct {
-	Key        string
-	Value      []byte
-	Operation  string
-	RaftIndex  uint64
-	RaftTerm   uint64
-	Timestamp  int64
-	Version    uint64
+	Key       string
+	Value     []byte
+	Operation string
+	RaftIndex uint64
+	RaftTerm  uint64
+	Timestamp int64
+	Version   uint64
 }
 
 // Watcher represents a single watch subscription
 type Watcher struct {
-	id           string
-	subscriber   *cdc.Subscriber
-	store        storage.Store
-	logger       *zap.Logger
-	config       WatchConfig
-	keyPrefix    string
-	operations   []string
-	createdAt    time.Time
+	id         string
+	subscriber *cdc.Subscriber
+	store      storage.Store
+	logger     *zap.Logger
+	config     WatchConfig
+	keyPrefix  string
+	operations []string
+	createdAt  time.Time
 
 	// Initial value handling
 	initialValue     bool
 	initialValueSent bool
 
 	// Metrics
-	mu               sync.RWMutex
-	eventsDelivered  uint64
-	closed           bool
+	mu              sync.RWMutex
+	eventsDelivered uint64
+	closed          bool
 }
 
 // GetID returns the watcher ID

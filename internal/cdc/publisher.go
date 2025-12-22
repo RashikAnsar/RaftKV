@@ -15,7 +15,7 @@ type Publisher struct {
 	subscribers map[string]*Subscriber
 	logger      *zap.Logger
 	sequenceNum atomic.Uint64 // Monotonically increasing sequence number
-	dcID        string         // Datacenter ID for event tagging
+	dcID        string        // Datacenter ID for event tagging
 	closed      atomic.Bool
 }
 

@@ -15,11 +15,11 @@ import (
 // Coordinator orchestrates replication to multiple datacenters
 // Manages CDC subscriptions, streaming connections, and replication workers
 type Coordinator struct {
-	config       Config
-	publisher    *cdc.Publisher
-	topology     *TopologyManager
-	lagMonitor   *LagMonitor
-	logger       *zap.Logger
+	config     Config
+	publisher  *cdc.Publisher
+	topology   *TopologyManager
+	lagMonitor *LagMonitor
+	logger     *zap.Logger
 
 	mu      sync.RWMutex
 	workers map[string]*replicationWorker // Map of DC ID -> worker

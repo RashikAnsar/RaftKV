@@ -219,6 +219,7 @@ func TestMigrator_StartMigration(t *testing.T) {
 	// Ensure migration is stopped when test completes
 	t.Cleanup(func() {
 		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
 	})
 
 	// Wait for migration to complete
@@ -257,6 +258,7 @@ func TestMigrator_StartMigrationAlreadyRunning(t *testing.T) {
 	// Ensure migration is stopped when test completes
 	t.Cleanup(func() {
 		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
 	})
 
 	// Try to start again
@@ -283,9 +285,18 @@ func TestMigrator_StopMigration(t *testing.T) {
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
 
+	// Ensure migration is stopped and goroutine has time to exit
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
+	})
+
 	// Stop migration
 	err = migrator.StopMigration("migration-1")
 	require.NoError(t, err)
+
+	// Give the goroutine time to fully stop
+	time.Sleep(100 * time.Millisecond)
 
 	// Verify migration is removed
 	_, err = migrator.GetMigrationStatus("migration-1")
@@ -326,6 +337,7 @@ func TestMigrator_GetMigrationStatus(t *testing.T) {
 	// Ensure migration is stopped when test completes
 	t.Cleanup(func() {
 		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
 	})
 
 	// Get status
@@ -375,6 +387,7 @@ func TestMigrator_BatchCopy(t *testing.T) {
 	// Ensure migration is stopped when test completes
 	t.Cleanup(func() {
 		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
 	})
 
 	// Wait for migration
@@ -414,6 +427,7 @@ func TestMigrator_EmptySource(t *testing.T) {
 	// Ensure migration is stopped when test completes
 	t.Cleanup(func() {
 		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
 	})
 
 	// Wait for migration
@@ -463,6 +477,7 @@ func TestMigrator_CopyWithRetry(t *testing.T) {
 	// Ensure migration is stopped when test completes
 	t.Cleanup(func() {
 		migrator.StopMigration("migration-1")
+		time.Sleep(100 * time.Millisecond) // Allow goroutine to fully exit
 	})
 
 	// Wait a bit, then disable failures

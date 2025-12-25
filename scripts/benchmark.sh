@@ -4,12 +4,13 @@
 # Usage: ./scripts/benchmark.sh [options]
 #
 # Options:
-#   -t, --type TYPE     Benchmark type: storage, server, batch, cluster, all (default: all)
-#   -o, --output FILE   Output file for results (default: stdout)
-#   -c, --count N       Number of benchmark iterations (default: 1)
-#   -m, --memory        Include memory profiling
-#   -p, --cpu           Include CPU profiling
-#   -h, --help          Show this help message
+#   -t, --type TYPE        Benchmark type: storage, server, batch, cluster, all (default: all)
+#   -o, --output FILE      Output file for results (default: stdout)
+#   -c, --count N          Number of benchmark iterations (default: 1)
+#   -b, --benchtime TIME   Benchmark time per test (default: auto - 1s for most, 500ms for cluster)
+#   -m, --memory           Include memory profiling
+#   -p, --cpu              Include CPU profiling
+#   -h, --help             Show this help message
 
 set -e
 
@@ -24,6 +25,7 @@ NC='\033[0m' # No Color
 BENCH_TYPE="all"
 OUTPUT_FILE=""
 BENCH_COUNT=1
+BENCH_TIME=""  # Empty means auto-select based on type
 MEMORY_PROFILE=false
 CPU_PROFILE=false
 
@@ -42,6 +44,10 @@ while [[ $# -gt 0 ]]; do
             BENCH_COUNT="$2"
             shift 2
             ;;
+        -b|--benchtime)
+            BENCH_TIME="$2"
+            shift 2
+            ;;
         -m|--memory)
             MEMORY_PROFILE=true
             shift
@@ -51,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--help)
-            head -n 12 "$0" | tail -n 11
+            head -n 13 "$0" | tail -n 12
             exit 0
             ;;
         *)
@@ -78,6 +84,7 @@ mkdir -p benchmarks/profiles
 echo -e "${BLUE}=== RaftKV Benchmark Suite ===${NC}"
 echo -e "Type: ${GREEN}$BENCH_TYPE${NC}"
 echo -e "Iterations: ${GREEN}$BENCH_COUNT${NC}"
+echo -e "Benchtime: ${GREEN}${BENCH_TIME:-auto}${NC}"
 echo -e "Memory Profile: ${GREEN}$MEMORY_PROFILE${NC}"
 echo -e "CPU Profile: ${GREEN}$CPU_PROFILE${NC}"
 echo ""
@@ -97,36 +104,49 @@ fi
 run_benchmark() {
     local bench_name=$1
     local bench_pattern=$2
+    local benchtime=${3:-"1s"}  # Default benchtime, can be overridden
 
     echo -e "${YELLOW}Running $bench_name benchmarks...${NC}"
 
+    # Build flags for this specific benchmark run
+    local flags="$BENCH_FLAGS -benchtime=$benchtime"
+
     if [ -n "$OUTPUT_FILE" ]; then
-        go test ./test/benchmark -run=^$ $BENCH_FLAGS -bench="$bench_pattern" | tee -a "$OUTPUT_FILE"
+        go test ./test/benchmark -run=^$ $flags -bench="$bench_pattern" | tee -a "$OUTPUT_FILE"
     else
-        go test ./test/benchmark -run=^$ $BENCH_FLAGS -bench="$bench_pattern"
+        go test ./test/benchmark -run=^$ $flags -bench="$bench_pattern"
     fi
 
     echo ""
 }
 
+# Determine benchtime based on type if not specified
+if [ -z "$BENCH_TIME" ]; then
+    if [ "$BENCH_TYPE" = "cluster" ]; then
+        BENCH_TIME="500ms"  # Faster default for cluster benchmarks
+    else
+        BENCH_TIME="1s"     # Standard default
+    fi
+fi
+
 # Run benchmarks based on type
 case $BENCH_TYPE in
     storage)
-        run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery"
+        run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery" "$BENCH_TIME"
         ;;
     server)
-        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached"
+        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached" "$BENCH_TIME"
         ;;
     batch)
-        run_benchmark "Batch Writes" "BenchmarkBatchedWrites"
+        run_benchmark "Batch Writes" "BenchmarkBatchedWrites" "$BENCH_TIME"
         ;;
     cluster)
-        run_benchmark "Cluster" "BenchmarkCluster"
+        run_benchmark "Cluster" "BenchmarkCluster" "$BENCH_TIME"
         ;;
     all)
-        run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery"
-        run_benchmark "Batch Writes" "BenchmarkBatchedWrites"
-        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached"
+        run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery" "$BENCH_TIME"
+        run_benchmark "Batch Writes" "BenchmarkBatchedWrites" "$BENCH_TIME"
+        run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached" "$BENCH_TIME"
         echo ""
         echo -e "${YELLOW}Note: Cluster benchmarks are slow and skipped in 'all'. Run with -t cluster to benchmark cluster operations.${NC}"
         ;;

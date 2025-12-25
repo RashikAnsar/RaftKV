@@ -102,6 +102,30 @@ func (bc *BenchmarkCluster) WaitForLeader(timeout time.Duration) *consensus.Raft
 	return nil
 }
 
+// JoinNodes joins all non-bootstrap nodes to the cluster
+func (bc *BenchmarkCluster) JoinNodes() error {
+	// Wait for bootstrap node to become leader
+	leader := bc.WaitForLeader(10 * time.Second)
+	if leader == nil {
+		return fmt.Errorf("bootstrap node failed to become leader")
+	}
+
+	// Join remaining nodes
+	for i := 1; i < len(bc.nodes); i++ {
+		node := bc.nodes[i]
+		nodeID := fmt.Sprintf("node%d", i)
+
+		if err := leader.Join(nodeID, node.RaftAddr); err != nil {
+			return fmt.Errorf("failed to join node %d: %w", i, err)
+		}
+
+		// Wait a bit for the node to join
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return nil
+}
+
 // Close shuts down the cluster
 func (bc *BenchmarkCluster) Close() {
 	for _, node := range bc.nodes {
@@ -122,11 +146,16 @@ func (bc *BenchmarkCluster) Close() {
 // BenchmarkCluster_ThreeNodeWrites benchmarks write performance on a 3-node cluster
 func BenchmarkCluster_ThreeNodeWrites(b *testing.B) {
 	if testing.Short() {
-		b.Skip("Skipping cluster benchmark in short mode")
+		b.Skip("Skipping slow cluster benchmark in short mode")
 	}
 
 	cluster := NewBenchmarkCluster(b, 3)
 	defer cluster.Close()
+
+	// Join all nodes to the cluster
+	if err := cluster.JoinNodes(); err != nil {
+		b.Fatalf("Failed to join nodes: %v", err)
+	}
 
 	// Wait for leader election
 	leader := cluster.WaitForLeader(10 * time.Second)
@@ -158,11 +187,16 @@ func BenchmarkCluster_ThreeNodeWrites(b *testing.B) {
 // BenchmarkCluster_FiveNodeWrites benchmarks write performance on a 5-node cluster
 func BenchmarkCluster_FiveNodeWrites(b *testing.B) {
 	if testing.Short() {
-		b.Skip("Skipping cluster benchmark in short mode")
+		b.Skip("Skipping slow cluster benchmark in short mode")
 	}
 
 	cluster := NewBenchmarkCluster(b, 5)
 	defer cluster.Close()
+
+	// Join all nodes to the cluster
+	if err := cluster.JoinNodes(); err != nil {
+		b.Fatalf("Failed to join nodes: %v", err)
+	}
 
 	leader := cluster.WaitForLeader(10 * time.Second)
 	if leader == nil {
@@ -192,11 +226,16 @@ func BenchmarkCluster_FiveNodeWrites(b *testing.B) {
 // BenchmarkCluster_ConcurrentWrites benchmarks concurrent writes to a cluster
 func BenchmarkCluster_ConcurrentWrites(b *testing.B) {
 	if testing.Short() {
-		b.Skip("Skipping cluster benchmark in short mode")
+		b.Skip("Skipping slow cluster benchmark in short mode")
 	}
 
 	cluster := NewBenchmarkCluster(b, 3)
 	defer cluster.Close()
+
+	// Join all nodes to the cluster
+	if err := cluster.JoinNodes(); err != nil {
+		b.Fatalf("Failed to join nodes: %v", err)
+	}
 
 	leader := cluster.WaitForLeader(10 * time.Second)
 	if leader == nil {
@@ -242,11 +281,16 @@ func BenchmarkCluster_ConcurrentWrites(b *testing.B) {
 // BenchmarkCluster_Reads benchmarks read performance from different nodes
 func BenchmarkCluster_Reads(b *testing.B) {
 	if testing.Short() {
-		b.Skip("Skipping cluster benchmark in short mode")
+		b.Skip("Skipping slow cluster benchmark in short mode")
 	}
 
 	cluster := NewBenchmarkCluster(b, 3)
 	defer cluster.Close()
+
+	// Join all nodes to the cluster
+	if err := cluster.JoinNodes(); err != nil {
+		b.Fatalf("Failed to join nodes: %v", err)
+	}
 
 	leader := cluster.WaitForLeader(10 * time.Second)
 	if leader == nil {
@@ -303,11 +347,16 @@ func BenchmarkCluster_Reads(b *testing.B) {
 // BenchmarkCluster_ReplicationLatency measures replication latency
 func BenchmarkCluster_ReplicationLatency(b *testing.B) {
 	if testing.Short() {
-		b.Skip("Skipping cluster benchmark in short mode")
+		b.Skip("Skipping slow cluster benchmark in short mode")
 	}
 
 	cluster := NewBenchmarkCluster(b, 3)
 	defer cluster.Close()
+
+	// Join all nodes to the cluster
+	if err := cluster.JoinNodes(); err != nil {
+		b.Fatalf("Failed to join nodes: %v", err)
+	}
 
 	leader := cluster.WaitForLeader(10 * time.Second)
 	if leader == nil {
@@ -372,11 +421,16 @@ func BenchmarkCluster_ReplicationLatency(b *testing.B) {
 // BenchmarkCluster_MixedWorkload benchmarks a mixed read/write workload
 func BenchmarkCluster_MixedWorkload(b *testing.B) {
 	if testing.Short() {
-		b.Skip("Skipping cluster benchmark in short mode")
+		b.Skip("Skipping slow cluster benchmark in short mode")
 	}
 
 	cluster := NewBenchmarkCluster(b, 3)
 	defer cluster.Close()
+
+	// Join all nodes to the cluster
+	if err := cluster.JoinNodes(); err != nil {
+		b.Fatalf("Failed to join nodes: %v", err)
+	}
 
 	leader := cluster.WaitForLeader(10 * time.Second)
 	if leader == nil {

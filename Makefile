@@ -101,6 +101,7 @@ bench-batch:
 
 bench-cluster:
 	@echo "Running cluster benchmarks (slow)..."
+	$(GO) clean -testcache
 	@./scripts/benchmark.sh -t cluster
 
 bench-full:

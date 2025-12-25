@@ -1,4 +1,4 @@
-.PHONY: all run build build-cli build-kvpserver run-kvpserver test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test k8s-build k8s-load k8s-install k8s-install-prod k8s-uninstall k8s-upgrade k8s-restart k8s-status k8s-logs k8s-shell k8s-port-forward k8s-clean k8s-deploy k8s-redeploy test-kubernetes-deployment test-kubernetes-deployment-quick
+.PHONY: all run build build-cli build-kvpserver run-kvpserver test test-storage test-compaction test-integration test-integration-fast test-coverage bench bench-compaction bench-grpc bench-http bench-full bench-cluster clean fmt lint help run-server raft-cluster raft-stop raft-node1 raft-node2 raft-node3 raft-status raft-test-api raft-test-grpc quickstart proto tls-certs tls-server tls-cluster tls-test k8s-build k8s-load k8s-install k8s-install-prod k8s-uninstall k8s-upgrade k8s-restart k8s-status k8s-logs k8s-shell k8s-port-forward k8s-clean k8s-deploy k8s-redeploy test-kubernetes-deployment test-kubernetes-deployment-quick
 
 # Variables
 BINARY_NAME=kvstore
@@ -100,8 +100,14 @@ bench-batch:
 	@./scripts/benchmark.sh -t batch
 
 bench-cluster:
-	@echo "Note: Cluster benchmarks are skipped (.skip files)"
-	@echo "See test/benchmark/CLUSTER_BENCHMARKS.md for details"
+	@echo "Running cluster benchmarks (slow)..."
+	@./scripts/benchmark.sh -t cluster
+
+bench-full:
+	@echo "Running all benchmarks including cluster (slow)..."
+	@./scripts/benchmark.sh -t storage
+	@./scripts/benchmark.sh -t batch
+	@./scripts/benchmark.sh -t server
 	@./scripts/benchmark.sh -t cluster
 
 bench-results:
@@ -519,11 +525,12 @@ help:
 	@echo "  make test-coverage   - Run tests with coverage report"
 	@echo ""
 	@echo "Benchmarks:"
-	@echo "  make bench           - Run all benchmarks"
+	@echo "  make bench           - Run all benchmarks (excludes slow cluster benchmarks)"
 	@echo "  make bench-storage   - Run storage benchmarks"
 	@echo "  make bench-server    - Run HTTP server benchmarks"
 	@echo "  make bench-batch     - Run batch write benchmarks"
-	@echo "  make bench-cluster   - Info about cluster benchmarks (skipped)"
+	@echo "  make bench-cluster   - Run cluster/Raft benchmarks (slow)"
+	@echo "  make bench-full      - Run ALL benchmarks including cluster (very slow)"
 	@echo "  make bench-results   - Run all benchmarks, save to file"
 	@echo "  make bench-profile   - Run benchmarks with CPU/memory profiling"
 	@echo "  make bench-compare   - Run benchmarks 5x for comparison baseline"

@@ -121,16 +121,14 @@ case $BENCH_TYPE in
         run_benchmark "Batch Writes" "BenchmarkBatchedWrites"
         ;;
     cluster)
-        echo -e "${YELLOW}Note: Cluster benchmarks are skipped (.skip files)${NC}"
-        echo -e "See test/benchmark/CLUSTER_BENCHMARKS.md for details"
+        run_benchmark "Cluster" "BenchmarkCluster"
         ;;
     all)
         run_benchmark "Storage" "BenchmarkStorage|BenchmarkValueSizes|BenchmarkSnapshot|BenchmarkRecovery"
         run_benchmark "Batch Writes" "BenchmarkBatchedWrites"
         run_benchmark "Server" "BenchmarkHTTPServer|BenchmarkCachedVsUncached"
         echo ""
-        echo -e "${YELLOW}Note: Cluster benchmarks are skipped (.skip files)${NC}"
-        echo -e "See test/benchmark/CLUSTER_BENCHMARKS.md for details"
+        echo -e "${YELLOW}Note: Cluster benchmarks are slow and skipped in 'all'. Run with -t cluster to benchmark cluster operations.${NC}"
         ;;
 esac
 

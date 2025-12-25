@@ -42,6 +42,5 @@ linters-settings:
       - fieldalignment
 
 issues:
-  exclude-use-default: true
   max-issues-per-linter: 0
   max-same-issues: 0

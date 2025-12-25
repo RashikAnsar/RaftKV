@@ -216,6 +216,11 @@ func TestMigrator_StartMigration(t *testing.T) {
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
 
+	// Ensure migration is stopped when test completes
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+	})
+
 	// Wait for migration to complete
 	time.Sleep(500 * time.Millisecond)
 
@@ -248,6 +253,11 @@ func TestMigrator_StartMigrationAlreadyRunning(t *testing.T) {
 	ctx := context.Background()
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
+
+	// Ensure migration is stopped when test completes
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+	})
 
 	// Try to start again
 	err = migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
@@ -313,6 +323,11 @@ func TestMigrator_GetMigrationStatus(t *testing.T) {
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
 
+	// Ensure migration is stopped when test completes
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+	})
+
 	// Get status
 	time.Sleep(100 * time.Millisecond)
 	status, err := migrator.GetMigrationStatus("migration-1")
@@ -357,6 +372,11 @@ func TestMigrator_BatchCopy(t *testing.T) {
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
 
+	// Ensure migration is stopped when test completes
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+	})
+
 	// Wait for migration
 	time.Sleep(500 * time.Millisecond)
 
@@ -390,6 +410,11 @@ func TestMigrator_EmptySource(t *testing.T) {
 	ctx := context.Background()
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
+
+	// Ensure migration is stopped when test completes
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+	})
 
 	// Wait for migration
 	time.Sleep(200 * time.Millisecond)
@@ -434,6 +459,11 @@ func TestMigrator_CopyWithRetry(t *testing.T) {
 	ctx := context.Background()
 	err := migrator.StartMigration(ctx, "migration-1", sourceStore, targetStore)
 	require.NoError(t, err)
+
+	// Ensure migration is stopped when test completes
+	t.Cleanup(func() {
+		migrator.StopMigration("migration-1")
+	})
 
 	// Wait a bit, then disable failures
 	time.Sleep(100 * time.Millisecond)

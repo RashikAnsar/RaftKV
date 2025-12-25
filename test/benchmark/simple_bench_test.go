@@ -56,7 +56,6 @@ func BenchmarkStorageSequential(b *testing.B) {
 			SnapshotEvery: 10000,
 		})
 		require.NoError(b, err)
-		defer store.Close()
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -64,7 +63,9 @@ func BenchmarkStorageSequential(b *testing.B) {
 			value := []byte(fmt.Sprintf("value-%d", i))
 			_ = store.Put(ctx, key, value)
 		}
+		b.StopTimer()
 		b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+		store.Close()
 	})
 
 	b.Run("DurableStore-Put-WithFsync", func(b *testing.B) {
@@ -75,7 +76,6 @@ func BenchmarkStorageSequential(b *testing.B) {
 			SnapshotEvery: 10000,
 		})
 		require.NoError(b, err)
-		defer store.Close()
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -83,7 +83,9 @@ func BenchmarkStorageSequential(b *testing.B) {
 			value := []byte(fmt.Sprintf("value-%d", i))
 			_ = store.Put(ctx, key, value)
 		}
+		b.StopTimer()
 		b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
+		store.Close()
 	})
 }
 

@@ -99,7 +99,7 @@ dockers:
   - image_templates:
       - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY }}:{{ .Version }}"
       - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY }}:latest"
-    dockerfile: deployments/docker/Dockerfile
+    dockerfile: Dockerfile.goreleaser
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{.Date}}"

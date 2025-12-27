@@ -1,0 +1,41 @@
+# Dockerfile for goreleaser
+# This is a runtime-only image that uses pre-built binaries from goreleaser
+FROM alpine:latest
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1000 raftkv && \
+    adduser -D -u 1000 -G raftkv raftkv
+
+# Create data directory
+RUN mkdir -p /data && chown raftkv:raftkv /data
+
+# Copy pre-built binaries from goreleaser build context
+COPY kvstore /usr/local/bin/kvstore
+COPY kvcli /usr/local/bin/kvcli
+COPY kvpserver /usr/local/bin/kvpserver
+
+# Make binaries executable
+RUN chmod +x /usr/local/bin/kvstore /usr/local/bin/kvcli /usr/local/bin/kvpserver
+
+# Switch to non-root user
+USER raftkv
+
+# Set working directory
+WORKDIR /data
+
+# Expose ports
+# 8080: HTTP API
+# 9090: gRPC API
+# 7000: Raft communication
+EXPOSE 8080 9090 7000
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Default command
+ENTRYPOINT ["/usr/local/bin/kvstore"]
+CMD ["--http-addr=:8080", "--grpc-addr=:9090", "--data-dir=/data"]

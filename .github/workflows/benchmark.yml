@@ -63,13 +63,14 @@ jobs:
           set -o pipefail
           # Run benchmarks on critical packages only to save time
           # Use -short to skip slow cluster benchmarks
+          # Allow failures if main branch has issues
           go test -short -bench=. -benchmem -benchtime=2s -timeout=15m \
             ./internal/storage/... \
             ./internal/server/... \
             ./internal/kvp/... \
             ./test/benchmark/... \
-            2>&1 | tee main_bench.txt
-        continue-on-error: false
+            2>&1 | tee main_bench.txt || echo "Main branch benchmarks failed, will skip comparison"
+        continue-on-error: true
 
       - name: Install benchstat
         if: github.event_name == 'pull_request'
@@ -259,19 +260,28 @@ jobs:
 
       - name: Analyze profiles
         run: |
+          # Initialize the file
+          echo "# Profile Analysis" > profile_analysis.md
+          echo "" >> profile_analysis.md
+
           if [ -f cpu.prof ]; then
-            echo "## CPU Profile (Top 10)" > profile_analysis.md
+            echo "## CPU Profile (Top 10)" >> profile_analysis.md
             echo '```' >> profile_analysis.md
-            go tool pprof -text -top10 cpu.prof >> profile_analysis.md
+            go tool pprof -text -top10 cpu.prof >> profile_analysis.md || echo "Failed to analyze CPU profile" >> profile_analysis.md
             echo '```' >> profile_analysis.md
+            echo "" >> profile_analysis.md
+          else
+            echo "No CPU profile generated" >> profile_analysis.md
+            echo "" >> profile_analysis.md
           fi
 
           if [ -f mem.prof ]; then
-            echo "" >> profile_analysis.md
             echo "## Memory Profile (Top 10)" >> profile_analysis.md
             echo '```' >> profile_analysis.md
-            go tool pprof -text -top10 mem.prof >> profile_analysis.md
+            go tool pprof -text -top10 mem.prof >> profile_analysis.md || echo "Failed to analyze memory profile" >> profile_analysis.md
             echo '```' >> profile_analysis.md
+          else
+            echo "No memory profile generated" >> profile_analysis.md
           fi
 
       - name: Upload profiles

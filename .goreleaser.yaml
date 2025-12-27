@@ -97,8 +97,8 @@ changelog:
 
 dockers:
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:{{ .Version }}"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY }}:latest"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY }}:{{ .Version }}"
+      - "ghcr.io/{{ tolower .Env.GITHUB_REPOSITORY }}:latest"
     dockerfile: deployments/docker/Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"

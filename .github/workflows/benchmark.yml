@@ -249,12 +249,12 @@ jobs:
 
       - name: Run CPU profiling
         run: |
-          go test -short -cpuprofile=cpu.prof -bench=. -benchtime=10s ./internal/storage/...
+          go test -short -cpuprofile=cpu.prof -bench=. -benchtime=2s ./internal/storage/...
         continue-on-error: true
 
       - name: Run memory profiling
         run: |
-          go test -short -memprofile=mem.prof -bench=. -benchtime=10s ./internal/storage/...
+          go test -short -memprofile=mem.prof -bench=. -benchtime=2s ./internal/storage/...
         continue-on-error: true
 
       - name: Analyze profiles

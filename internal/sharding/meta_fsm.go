@@ -14,20 +14,20 @@ import (
 type CommandType string
 
 const (
-	CommandAddShard       CommandType = "add_shard"
-	CommandRemoveShard    CommandType = "remove_shard"
-	CommandUpdateShard    CommandType = "update_shard"
-	CommandAddNode        CommandType = "add_node"
-	CommandRemoveNode     CommandType = "remove_node"
-	CommandUpdateNode     CommandType = "update_node"
-	CommandAddMigration   CommandType = "add_migration"
+	CommandAddShard        CommandType = "add_shard"
+	CommandRemoveShard     CommandType = "remove_shard"
+	CommandUpdateShard     CommandType = "update_shard"
+	CommandAddNode         CommandType = "add_node"
+	CommandRemoveNode      CommandType = "remove_node"
+	CommandUpdateNode      CommandType = "update_node"
+	CommandAddMigration    CommandType = "add_migration"
 	CommandUpdateMigration CommandType = "update_migration"
 	CommandRemoveMigration CommandType = "remove_migration"
 )
 
 // Command represents a command to be applied to the meta FSM
 type Command struct {
-	Type CommandType `json:"type"`
+	Type CommandType     `json:"type"`
 	Data json.RawMessage `json:"data"`
 }
 
@@ -214,8 +214,8 @@ func (fsm *MetaFSM) applyRemoveShard(data json.RawMessage) error {
 }
 
 type UpdateShardCmd struct {
-	ShardID int           `json:"shard_id"`
-	Shard   *ShardInfo    `json:"shard"`
+	ShardID int        `json:"shard_id"`
+	Shard   *ShardInfo `json:"shard"`
 }
 
 func (fsm *MetaFSM) applyUpdateShard(data json.RawMessage) error {

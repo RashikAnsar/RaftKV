@@ -28,9 +28,9 @@ type DataProvider interface {
 
 // ScheduleConfig contains scheduler configuration
 type ScheduleConfig struct {
-	CronExpression string
-	Timezone       string
-	EnablePruning  bool
+	CronExpression   string
+	Timezone         string
+	EnablePruning    bool
 	PruneAfterBackup bool
 }
 

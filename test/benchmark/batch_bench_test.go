@@ -19,7 +19,7 @@ func BenchmarkBatchedWrites_Sequential(b *testing.B) {
 		tmpDir := b.TempDir()
 		store, err := storage.NewDurableStore(storage.DurableStoreConfig{
 			DataDir:       tmpDir,
-			SyncOnWrite:   true,  // Fsync on every write
+			SyncOnWrite:   true,   // Fsync on every write
 			SnapshotEvery: 100000, // Don't snapshot during benchmark
 			BatchConfig: storage.BatchConfig{
 				Enabled: false, // No batching

@@ -297,10 +297,10 @@ auth:
 	require.NoError(t, err)
 
 	// Verify precedence: flags > env > config file > defaults
-	assert.Equal(t, ":9999", cfg.Server.HTTPAddr)               // From flags (highest)
-	assert.Equal(t, "/from/env", cfg.Storage.DataDir)           // From env (overrides config file)
-	assert.Equal(t, "from-config-file", cfg.Auth.JWTSecret)     // From config file
-	assert.Equal(t, ":9090", cfg.Server.GRPCAddr)               // From defaults (lowest)
+	assert.Equal(t, ":9999", cfg.Server.HTTPAddr)           // From flags (highest)
+	assert.Equal(t, "/from/env", cfg.Storage.DataDir)       // From env (overrides config file)
+	assert.Equal(t, "from-config-file", cfg.Auth.JWTSecret) // From config file
+	assert.Equal(t, ":9090", cfg.Server.GRPCAddr)           // From defaults (lowest)
 }
 
 func TestValidate(t *testing.T) {

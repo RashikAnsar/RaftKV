@@ -934,10 +934,10 @@ func TestMemoryStore_CAS_Stats(t *testing.T) {
 
 	// Perform CAS operations
 	store.Put(ctx, "key1", []byte("v1"))
-	store.CompareAndSwap(ctx, "key1", 1, []byte("v2"))     // Success
-	store.CompareAndSwap(ctx, "key1", 1, []byte("v3"))     // Fail - wrong version
-	store.SetIfNotExists(ctx, "key2", []byte("v1"))        // Success
-	store.SetIfNotExists(ctx, "key2", []byte("v2"))        // Fail - exists
+	store.CompareAndSwap(ctx, "key1", 1, []byte("v2"))       // Success
+	store.CompareAndSwap(ctx, "key1", 1, []byte("v3"))       // Fail - wrong version
+	store.SetIfNotExists(ctx, "key2", []byte("v1"))          // Success
+	store.SetIfNotExists(ctx, "key2", []byte("v2"))          // Fail - exists
 	store.CompareAndSwap(ctx, "nonexistent", 1, []byte("x")) // Fail - not found
 
 	stats := store.Stats()

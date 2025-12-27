@@ -129,8 +129,9 @@ func (s *DurableStore) recover() error {
 		s.lastRaftIndex = snapshot.RaftIndex
 		s.lastRaftTerm = snapshot.RaftTerm
 
-		fmt.Printf("Recovered from snapshot at index %d (Raft: %d/%d, %d keys)\n",
-			snapshot.Index, snapshot.RaftIndex, snapshot.RaftTerm, snapshot.KeyCount)
+		// Log recovery info (commented out to reduce noise in tests/benchmarks)
+		// fmt.Printf("Recovered from snapshot at index %d (Raft: %d/%d, %d keys)\n",
+		// 	snapshot.Index, snapshot.RaftIndex, snapshot.RaftTerm, snapshot.KeyCount)
 	}
 
 	// Step 2: Replay WAL entries after snapshot
@@ -213,7 +214,9 @@ func (s *DurableStore) recover() error {
 	}
 
 	if appliedCount > 0 {
-		fmt.Printf("Replayed %d WAL entries after snapshot\n", appliedCount)
+		if appliedCount > 0 {
+			// fmt.Printf("Replayed %d WAL entries after snapshot\n", appliedCount)
+		}
 	}
 
 	s.opsSinceSnapshot = 0
@@ -390,12 +393,12 @@ func (s *DurableStore) Snapshot(ctx context.Context) (string, error) {
 }
 
 func (s *DurableStore) takeSnapshot() {
-	path, err := s.takeSnapshotSync()
+	_, err := s.takeSnapshotSync()
 	if err != nil {
-		fmt.Printf("ERROR: Failed to create snapshot: %v\n", err)
+		// fmt.Printf("ERROR: Failed to create snapshot: %v\n", err)
 		return
 	}
-	fmt.Printf("Snapshot created: %s\n", path)
+	// fmt.Printf("Snapshot created: %s\n", path)
 }
 
 func (s *DurableStore) takeSnapshotSync() (string, error) {
@@ -436,7 +439,7 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 
 	// Clean up old snapshots (keep last 3)
 	if err := s.snapshotManager.DeleteOldSnapshots(3); err != nil {
-		fmt.Printf("WARNING: Failed to delete old snapshots: %v\n", err)
+		// fmt.Printf("WARNING: Failed to delete old snapshots: %v\n", err)
 	}
 
 	// Compact WAL after snapshot (if enabled)
@@ -449,9 +452,9 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 
 		deletedCount, err := s.wal.CompactSegmentsBefore(compactBefore)
 		if err != nil {
-			fmt.Printf("WARNING: Failed to compact WAL: %v\n", err)
+			// fmt.Printf("WARNING: Failed to compact WAL: %v\n", err)
 		} else if deletedCount > 0 {
-			fmt.Printf("WAL compacted: deleted %d segments (before RaftIndex %d)\n", deletedCount, compactBefore)
+			// fmt.Printf("WAL compacted: deleted %d segments (before RaftIndex %d)\n", deletedCount, compactBefore)
 		}
 	}
 
@@ -459,8 +462,8 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 	if s.config.MaxWALSegments > 0 {
 		segmentCount, _ := s.wal.GetSegmentCount()
 		if segmentCount > s.config.MaxWALSegments {
-			fmt.Printf("WARNING: WAL has %d segments (max: %d). Consider triggering snapshot.\n",
-				segmentCount, s.config.MaxWALSegments)
+			// fmt.Printf("WARNING: WAL has %d segments (max: %d). Consider triggering snapshot.\n",
+			// 	segmentCount, s.config.MaxWALSegments)
 		}
 	}
 

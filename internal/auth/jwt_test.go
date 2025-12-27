@@ -34,7 +34,7 @@ func TestJWTManager_GenerateToken(t *testing.T) {
 		{
 			name:     "valid read token",
 			userID:   "user3",
-			username:   "reader",
+			username: "reader",
 			role:     RoleRead,
 			wantErr:  false,
 		},
@@ -407,10 +407,10 @@ func TestJWTManager_TokenLifecycle(t *testing.T) {
 
 func TestNewJWTManager(t *testing.T) {
 	tests := []struct {
-		name       string
-		secret     string
-		expiry     time.Duration
-		wantPanic  bool
+		name      string
+		secret    string
+		expiry    time.Duration
+		wantPanic bool
 	}{
 		{
 			name:      "valid config",

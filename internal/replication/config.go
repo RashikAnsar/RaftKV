@@ -58,7 +58,7 @@ type DatacenterTarget struct {
 	Region string `json:"region" yaml:"region"`
 
 	// TLS configuration
-	TLSEnabled bool   `json:"tls_enabled" yaml:"tls_enabled"`
+	TLSEnabled  bool   `json:"tls_enabled" yaml:"tls_enabled"`
 	TLSCertFile string `json:"tls_cert_file,omitempty" yaml:"tls_cert_file,omitempty"`
 	TLSKeyFile  string `json:"tls_key_file,omitempty" yaml:"tls_key_file,omitempty"`
 	TLSCAFile   string `json:"tls_ca_file,omitempty" yaml:"tls_ca_file,omitempty"`

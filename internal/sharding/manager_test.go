@@ -43,11 +43,11 @@ type MockApplyFuture struct {
 	response interface{}
 }
 
-func (m *MockApplyFuture) Error() error                { return m.err }
-func (m *MockApplyFuture) Response() interface{}       { return m.response }
-func (m *MockApplyFuture) Index() uint64               { return 1 }
-func (m *MockApplyFuture) Term() uint64                { return 1 }
-func (m *MockApplyFuture) Resp() interface{}           { return m.response }
+func (m *MockApplyFuture) Error() error          { return m.err }
+func (m *MockApplyFuture) Response() interface{} { return m.response }
+func (m *MockApplyFuture) Index() uint64         { return 1 }
+func (m *MockApplyFuture) Term() uint64          { return 1 }
+func (m *MockApplyFuture) Resp() interface{}     { return m.response }
 func (m *MockApplyFuture) ResultCh() <-chan raft.RPCResponse {
 	return nil
 }

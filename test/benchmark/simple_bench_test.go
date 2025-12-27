@@ -56,7 +56,14 @@ func BenchmarkStorageSequential(b *testing.B) {
 			SnapshotEvery: 10000,
 		})
 		require.NoError(b, err)
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				b.Logf("Warning: failed to close store: %v", err)
+			}
+			// Give the OS time to release file handles
+			// Longer delay for CI environments which may be slower
+			time.Sleep(50 * time.Millisecond)
+		}()
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -64,6 +71,7 @@ func BenchmarkStorageSequential(b *testing.B) {
 			value := []byte(fmt.Sprintf("value-%d", i))
 			_ = store.Put(ctx, key, value)
 		}
+		b.StopTimer()
 		b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
 	})
 
@@ -75,7 +83,14 @@ func BenchmarkStorageSequential(b *testing.B) {
 			SnapshotEvery: 10000,
 		})
 		require.NoError(b, err)
-		defer store.Close()
+		defer func() {
+			if err := store.Close(); err != nil {
+				b.Logf("Warning: failed to close store: %v", err)
+			}
+			// Give the OS time to release file handles
+			// Longer delay for CI environments which may be slower
+			time.Sleep(50 * time.Millisecond)
+		}()
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -83,6 +98,7 @@ func BenchmarkStorageSequential(b *testing.B) {
 			value := []byte(fmt.Sprintf("value-%d", i))
 			_ = store.Put(ctx, key, value)
 		}
+		b.StopTimer()
 		b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "ops/sec")
 	})
 }
@@ -173,6 +189,10 @@ func BenchmarkRecovery(b *testing.B) {
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Keys-%d", size), func(b *testing.B) {
 			tmpDir := b.TempDir()
+			defer func() {
+				// Give the OS time to release file handles before TempDir cleanup
+				time.Sleep(50 * time.Millisecond)
+			}()
 
 			// Create and populate store
 			store, err := storage.NewDurableStore(storage.DurableStoreConfig{

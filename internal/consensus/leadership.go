@@ -22,57 +22,57 @@ type RaftInterface interface {
 // LeadershipInfo contains detailed information about the current leadership state
 type LeadershipInfo struct {
 	// Current node information
-	NodeID    string `json:"node_id"`
-	IsLeader  bool   `json:"is_leader"`
-	State     string `json:"state"` // "leader", "follower", "candidate", "shutdown"
+	NodeID   string `json:"node_id"`
+	IsLeader bool   `json:"is_leader"`
+	State    string `json:"state"` // "leader", "follower", "candidate", "shutdown"
 
 	// Leader information
 	LeaderID      string `json:"leader_id"`
 	LeaderAddress string `json:"leader_address"`
 
 	// Raft state information
-	Term              uint64        `json:"term"`                 // Current term
-	LastContact       time.Time     `json:"last_contact"`         // Last contact with leader (for followers)
-	LastContactAge    time.Duration `json:"last_contact_age"`     // Time since last contact
-	CommitIndex       uint64        `json:"commit_index"`         // Last committed index
-	AppliedIndex      uint64        `json:"applied_index"`        // Last applied index
-	LastLogIndex      uint64        `json:"last_log_index"`       // Index of last log entry
-	LastLogTerm       uint64        `json:"last_log_term"`        // Term of last log entry
+	Term           uint64        `json:"term"`             // Current term
+	LastContact    time.Time     `json:"last_contact"`     // Last contact with leader (for followers)
+	LastContactAge time.Duration `json:"last_contact_age"` // Time since last contact
+	CommitIndex    uint64        `json:"commit_index"`     // Last committed index
+	AppliedIndex   uint64        `json:"applied_index"`    // Last applied index
+	LastLogIndex   uint64        `json:"last_log_index"`   // Index of last log entry
+	LastLogTerm    uint64        `json:"last_log_term"`    // Term of last log entry
 
 	// Cluster information
-	NumPeers          int           `json:"num_peers"`            // Number of peers in cluster
+	NumPeers int `json:"num_peers"` // Number of peers in cluster
 
 	// Leadership stability
-	LeadershipChanges int           `json:"leadership_changes"`   // Number of leadership changes
-	CurrentLeaderSince time.Time    `json:"current_leader_since"` // When current leader took office
+	LeadershipChanges  int           `json:"leadership_changes"`   // Number of leadership changes
+	CurrentLeaderSince time.Time     `json:"current_leader_since"` // When current leader took office
 	LeaderStability    time.Duration `json:"leader_stability"`     // How long current leader has been in office
 }
 
 // ElectionEvent represents a leadership change event
 type ElectionEvent struct {
-	Timestamp     time.Time `json:"timestamp"`
-	OldLeaderID   string    `json:"old_leader_id"`
-	NewLeaderID   string    `json:"new_leader_id"`
-	Term          uint64    `json:"term"`
-	Reason        string    `json:"reason"` // "election", "stepdown", "transfer", "network_partition", etc.
+	Timestamp   time.Time `json:"timestamp"`
+	OldLeaderID string    `json:"old_leader_id"`
+	NewLeaderID string    `json:"new_leader_id"`
+	Term        uint64    `json:"term"`
+	Reason      string    `json:"reason"` // "election", "stepdown", "transfer", "network_partition", etc.
 }
 
 // LeadershipManager manages leadership state and history
 type LeadershipManager struct {
-	mu                sync.RWMutex
-	raft              RaftInterface
-	logger            *zap.Logger
-	nodeID            string
+	mu     sync.RWMutex
+	raft   RaftInterface
+	logger *zap.Logger
+	nodeID string
 
 	// Leadership history
-	electionHistory   []ElectionEvent
-	maxHistorySize    int
+	electionHistory []ElectionEvent
+	maxHistorySize  int
 
 	// Current leadership tracking
-	currentLeaderID   string
+	currentLeaderID    string
 	currentLeaderSince time.Time
-	leadershipChanges int
-	lastKnownTerm     uint64
+	leadershipChanges  int
+	lastKnownTerm      uint64
 }
 
 // NewLeadershipManager creates a new leadership manager

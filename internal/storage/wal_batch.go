@@ -17,8 +17,8 @@ type BatchConfig struct {
 // DefaultBatchConfig returns sensible defaults for batching
 func DefaultBatchConfig() BatchConfig {
 	return BatchConfig{
-		MaxBatchSize:  100,              // Up to 100 operations
-		MaxBatchBytes: 1024 * 1024,      // 1MB of data
+		MaxBatchSize:  100,                   // Up to 100 operations
+		MaxBatchBytes: 1024 * 1024,           // 1MB of data
 		MaxWaitTime:   10 * time.Millisecond, // 10ms max latency
 		Enabled:       true,
 	}

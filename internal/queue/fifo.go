@@ -18,22 +18,22 @@ type FIFOQueue struct {
 	stats  *QueueStats
 
 	// In-flight messages (visibility timeout tracking)
-	inFlight    map[string]*inflightMessage
-	inFlightMu  sync.RWMutex
+	inFlight   map[string]*inflightMessage
+	inFlightMu sync.RWMutex
 
 	// Counters
-	deliveredCount   int64
+	deliveredCount    int64
 	acknowledgedCount int64
-	failedCount      int64
+	failedCount       int64
 
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 type inflightMessage struct {
-	MessageID      string
-	VisibleAt      time.Time
-	DeliveryCount  int
+	MessageID     string
+	VisibleAt     time.Time
+	DeliveryCount int
 }
 
 // NewFIFOQueue creates a new FIFO queue

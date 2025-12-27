@@ -25,9 +25,9 @@ var (
 
 // WatchConfig holds configuration for the watch manager
 type WatchConfig struct {
-	MaxWatchers          int           // Maximum number of concurrent watchers
-	BufferSize           int           // Event buffer size per watcher
-	InitialValueTimeout  time.Duration // Timeout for fetching initial values
+	MaxWatchers         int           // Maximum number of concurrent watchers
+	BufferSize          int           // Event buffer size per watcher
+	InitialValueTimeout time.Duration // Timeout for fetching initial values
 }
 
 // DefaultWatchConfig returns the default watch configuration
@@ -41,16 +41,16 @@ func DefaultWatchConfig() WatchConfig {
 
 // WatchManager manages all active watch subscriptions
 type WatchManager struct {
-	mu             sync.RWMutex
-	watchers       map[string]*Watcher // watchID -> Watcher
-	cdcPublisher   *cdc.Publisher
-	store          storage.Store
-	logger         *zap.Logger
-	config         WatchConfig
-	closed         bool
+	mu           sync.RWMutex
+	watchers     map[string]*Watcher // watchID -> Watcher
+	cdcPublisher *cdc.Publisher
+	store        storage.Store
+	logger       *zap.Logger
+	config       WatchConfig
+	closed       bool
 
 	// Metrics
-	totalWatchers  uint64 // Total watchers created
+	totalWatchers   uint64 // Total watchers created
 	eventsDelivered uint64 // Total events delivered
 }
 
@@ -127,14 +127,14 @@ func (wm *WatchManager) CreateWatch(ctx context.Context, req *WatchRequest) (*Wa
 
 	// Create watcher
 	watcher := &Watcher{
-		id:           watchID,
-		subscriber:   subscriber,
-		store:        wm.store,
-		logger:       wm.logger,
-		config:       wm.config,
-		keyPrefix:    req.KeyPrefix,
-		operations:   req.Operations,
-		createdAt:    time.Now(),
+		id:         watchID,
+		subscriber: subscriber,
+		store:      wm.store,
+		logger:     wm.logger,
+		config:     wm.config,
+		keyPrefix:  req.KeyPrefix,
+		operations: req.Operations,
+		createdAt:  time.Now(),
 	}
 
 	// Fetch and send initial value if requested
@@ -207,9 +207,9 @@ func (wm *WatchManager) ListWatchers() []string {
 
 // Stats returns watch manager statistics
 type WatchStats struct {
-	ActiveWatchers   int
-	TotalWatchers    uint64
-	EventsDelivered  uint64
+	ActiveWatchers  int
+	TotalWatchers   uint64
+	EventsDelivered uint64
 }
 
 // GetStats returns current watch manager statistics

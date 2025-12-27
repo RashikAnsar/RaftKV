@@ -43,11 +43,11 @@ func createTestStore(t *testing.T, dir string) *storage.DurableStore {
 
 // TestCluster represents a test cluster of Raft nodes
 type TestCluster struct {
-	nodes   []*consensus.RaftNode
-	stores  []*storage.DurableStore
-	dirs    []string
-	logger  *zap.Logger
-	t       *testing.T
+	nodes  []*consensus.RaftNode
+	stores []*storage.DurableStore
+	dirs   []string
+	logger *zap.Logger
+	t      *testing.T
 }
 
 // NewTestCluster creates a new test cluster with the specified number of nodes

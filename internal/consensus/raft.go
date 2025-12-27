@@ -29,11 +29,11 @@ type RaftNode struct {
 	transport         *raft.NetworkTransport
 	config            *raft.Config
 	logger            *zap.Logger
-	NodeID            string // Node ID (exported for testing)
-	RaftAddr          string // Raft address (exported for testing)
+	NodeID            string             // Node ID (exported for testing)
+	RaftAddr          string             // Raft address (exported for testing)
 	leadershipManager *LeadershipManager // Leadership tracking and management
-	leadershipStopCh  chan struct{} // Channel to stop leadership tracking
-	shutdownOnce      sync.Once // Ensures shutdown is only called once
+	leadershipStopCh  chan struct{}      // Channel to stop leadership tracking
+	shutdownOnce      sync.Once          // Ensures shutdown is only called once
 }
 
 type RaftConfig struct {
@@ -105,10 +105,10 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 
 		// Create transport with TLS stream layer
 		transportConfig := &raft.NetworkTransportConfig{
-			Stream:          streamLayer,
-			MaxPool:         3,
-			Timeout:         10 * time.Second,
-			Logger:          newHCLogger(config.Logger),
+			Stream:  streamLayer,
+			MaxPool: 3,
+			Timeout: 10 * time.Second,
+			Logger:  newHCLogger(config.Logger),
 		}
 
 		transport = raft.NewNetworkTransportWithConfig(transportConfig)

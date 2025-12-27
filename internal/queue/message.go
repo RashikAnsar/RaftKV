@@ -131,28 +131,28 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 
 // QueueStats represents statistics for a queue
 type QueueStats struct {
-	Name             string    `json:"name"`
-	Length           int       `json:"length"`             // Total messages in queue
-	Ready            int       `json:"ready"`              // Messages ready for delivery
-	Scheduled        int       `json:"scheduled"`          // Scheduled/delayed messages
-	DeliveredCount   int64     `json:"delivered_count"`    // Total messages delivered
-	AcknowledgedCount int64    `json:"acknowledged_count"` // Total messages acknowledged
-	FailedCount      int64     `json:"failed_count"`       // Total failed deliveries
-	DLQCount         int       `json:"dlq_count"`          // Messages in dead letter queue
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	Name              string    `json:"name"`
+	Length            int       `json:"length"`             // Total messages in queue
+	Ready             int       `json:"ready"`              // Messages ready for delivery
+	Scheduled         int       `json:"scheduled"`          // Scheduled/delayed messages
+	DeliveredCount    int64     `json:"delivered_count"`    // Total messages delivered
+	AcknowledgedCount int64     `json:"acknowledged_count"` // Total messages acknowledged
+	FailedCount       int64     `json:"failed_count"`       // Total failed deliveries
+	DLQCount          int       `json:"dlq_count"`          // Messages in dead letter queue
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // QueueConfig represents configuration for a queue
 type QueueConfig struct {
 	Name              string        `json:"name"`
-	Type              string        `json:"type"`                // "fifo", "priority", "delayed"
-	MaxLength         int           `json:"max_length"`          // Max queue length (0 = unlimited)
-	MaxRetries        int           `json:"max_retries"`         // Max delivery retries (0 = unlimited)
-	MessageTTL        time.Duration `json:"message_ttl"`         // Message TTL (0 = no expiration)
-	VisibilityTimeout time.Duration `json:"visibility_timeout"`  // Visibility timeout for consumers
-	DLQEnabled        bool          `json:"dlq_enabled"`         // Enable dead letter queue
-	DLQName           string        `json:"dlq_name"`            // Dead letter queue name
+	Type              string        `json:"type"`               // "fifo", "priority", "delayed"
+	MaxLength         int           `json:"max_length"`         // Max queue length (0 = unlimited)
+	MaxRetries        int           `json:"max_retries"`        // Max delivery retries (0 = unlimited)
+	MessageTTL        time.Duration `json:"message_ttl"`        // Message TTL (0 = no expiration)
+	VisibilityTimeout time.Duration `json:"visibility_timeout"` // Visibility timeout for consumers
+	DLQEnabled        bool          `json:"dlq_enabled"`        // Enable dead letter queue
+	DLQName           string        `json:"dlq_name"`           // Dead letter queue name
 }
 
 // DefaultQueueConfig returns default queue configuration

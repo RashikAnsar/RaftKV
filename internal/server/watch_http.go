@@ -59,7 +59,7 @@ func (s *HTTPServer) handleWatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Access-Control-Allow-Origin", "*") // Allow CORS for browser clients
-	w.Header().Set("X-Accel-Buffering", "no")           // Disable nginx buffering
+	w.Header().Set("X-Accel-Buffering", "no")          // Disable nginx buffering
 
 	// Send initial comment to establish connection
 	fmt.Fprintf(w, ": SSE watch stream established\n\n")

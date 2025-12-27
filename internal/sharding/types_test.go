@@ -124,16 +124,16 @@ func TestShardMap_AddNode(t *testing.T) {
 	sm := NewShardMap()
 
 	node := &NodeInfo{
-		ID:           "node1",
-		Address:      "localhost:8080",
-		State:        NodeStateActive,
-		Capacity:     1073741824, // 1GB
-		Used:         0,
-		Load:         0.0,
-		Shards:       []int{1, 2, 3},
+		ID:            "node1",
+		Address:       "localhost:8080",
+		State:         NodeStateActive,
+		Capacity:      1073741824, // 1GB
+		Used:          0,
+		Load:          0.0,
+		Shards:        []int{1, 2, 3},
 		LastHeartbeat: time.Now(),
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	sm.AddNode(node)

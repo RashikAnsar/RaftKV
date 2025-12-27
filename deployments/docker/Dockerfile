@@ -19,7 +19,7 @@ RUN go mod download
 COPY . .
 
 # Build the server and CLI binaries
-RUN make build build-cli
+RUN make build build-cli build-kvpserver
 
 # Stage 2: Create minimal runtime image
 FROM alpine:latest
@@ -37,6 +37,7 @@ RUN mkdir -p /data && chown raftkv:raftkv /data
 # Copy binaries from builder
 COPY --from=builder /app/bin/kvstore /usr/local/bin/kvstore
 COPY --from=builder /app/bin/kvcli /usr/local/bin/kvcli
+COPY --from=builder /app/bin/kvpserver /usr/local/bin/kvpserver
 
 # Switch to non-root user
 USER raftkv

@@ -36,8 +36,8 @@ type BackupSettings struct {
 // CompressionSettings contains compression configuration
 type CompressionSettings struct {
 	Enabled bool   `json:"enabled" yaml:"enabled"`
-	Type    string `json:"type" yaml:"type"`       // gzip, zstd
-	Level   int    `json:"level" yaml:"level"`     // 1-9 for gzip
+	Type    string `json:"type" yaml:"type"`   // gzip, zstd
+	Level   int    `json:"level" yaml:"level"` // 1-9 for gzip
 }
 
 // EncryptionSettings contains encryption configuration
@@ -155,12 +155,12 @@ func (c *Config) Validate() error {
 // ToBackupConfig converts Config to BackupConfig
 func (c *Config) ToBackupConfig() (BackupConfig, error) {
 	cfg := BackupConfig{
-		NodeID:         c.Backup.NodeID,
-		ClusterID:      c.Backup.ClusterID,
-		Version:        c.Backup.Version,
-		RetentionDays:  c.Retention.RetentionDays,
-		MaxBackups:     c.Retention.MaxBackups,
-		BackupPrefix:   c.Backup.Prefix,
+		NodeID:        c.Backup.NodeID,
+		ClusterID:     c.Backup.ClusterID,
+		Version:       c.Backup.Version,
+		RetentionDays: c.Retention.RetentionDays,
+		MaxBackups:    c.Retention.MaxBackups,
+		BackupPrefix:  c.Backup.Prefix,
 	}
 
 	// Set compression

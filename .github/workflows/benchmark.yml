@@ -18,6 +18,7 @@ jobs:
   benchmark:
     name: Run Benchmarks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code (PR)
         if: github.event_name == 'pull_request'
@@ -33,13 +34,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: false
+          cache: true
 
       - name: Run benchmarks on PR branch
         if: github.event_name == 'pull_request'
         run: |
           set -o pipefail
-          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee pr_bench.txt || echo "No benchmarks found or benchmarks failed"
+          # Run benchmarks on critical packages only to save time
+          # Use -short to skip slow cluster benchmarks
+          go test -short -bench=. -benchmem -benchtime=2s -timeout=15m \
+            ./internal/storage/... \
+            ./internal/server/... \
+            ./internal/kvp/... \
+            ./test/benchmark/... \
+            2>&1 | tee pr_bench.txt
+        continue-on-error: false
 
       - name: Checkout main branch
         if: github.event_name == 'pull_request'
@@ -52,7 +61,16 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -o pipefail
-          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee main_bench.txt || echo "No benchmarks found or benchmarks failed"
+          # Run benchmarks on critical packages only to save time
+          # Use -short to skip slow cluster benchmarks
+          # Allow failures if main branch has issues
+          go test -short -bench=. -benchmem -benchtime=2s -timeout=15m \
+            ./internal/storage/... \
+            ./internal/server/... \
+            ./internal/kvp/... \
+            ./test/benchmark/... \
+            2>&1 | tee main_bench.txt || echo "Main branch benchmarks failed, will skip comparison"
+        continue-on-error: true
 
       - name: Install benchstat
         if: github.event_name == 'pull_request'
@@ -136,7 +154,15 @@ jobs:
         if: github.event_name == 'push'
         run: |
           set -o pipefail
-          go test -bench=. -benchmem -benchtime=5s -timeout=30m ./... 2>&1 | tee benchmark_baseline.txt || echo "No benchmarks found or benchmarks failed"
+          # Run benchmarks on critical packages only to save time
+          # Use -short to skip slow cluster benchmarks
+          go test -short -bench=. -benchmem -benchtime=2s -timeout=15m \
+            ./internal/storage/... \
+            ./internal/server/... \
+            ./internal/kvp/... \
+            ./test/benchmark/... \
+            2>&1 | tee benchmark_baseline.txt
+        continue-on-error: false
 
       - name: Upload baseline benchmarks
         if: github.event_name == 'push'
@@ -146,9 +172,42 @@ jobs:
           path: benchmark_baseline.txt
           retention-days: 30
 
+  cluster-benchmark:
+    name: Cluster Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Run cluster benchmarks
+        run: |
+          set -o pipefail
+          # Run cluster benchmarks (slow, only on main branch pushes)
+          # Explicitly target cluster benchmarks only
+          go test -run=^$ -bench='^BenchmarkCluster' -benchmem -benchtime=1s -timeout=25m \
+            ./test/benchmark/... \
+            2>&1 | tee cluster_bench.txt
+        continue-on-error: false
+
+      - name: Upload cluster benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-benchmarks-${{ github.sha }}
+          path: cluster_bench.txt
+          retention-days: 30
+
   stress-test:
     name: Stress Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
@@ -158,23 +217,26 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: false
+          cache: true
 
       - name: Run stress tests
         run: |
           # Run tests with high concurrency
           echo "Running stress tests with 100 concurrent goroutines..."
-          go test -v -run=Concurrent -timeout=10m ./internal/storage/... || echo "Stress tests not yet implemented"
+          go test -v -run=Concurrent -timeout=10m ./internal/storage/...
+        continue-on-error: true
 
       - name: Memory stress test
         run: |
           # Run memory-intensive operations
           echo "Running memory stress tests..."
-          go test -v -run=Memory -timeout=10m ./internal/storage/... || echo "Memory stress tests not yet implemented"
+          go test -v -run=Memory -timeout=10m ./internal/storage/...
+        continue-on-error: true
 
   profile:
     name: CPU and Memory Profiling
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
@@ -184,31 +246,42 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: false
+          cache: true
 
       - name: Run CPU profiling
         run: |
-          go test -cpuprofile=cpu.prof -bench=. -benchtime=10s ./internal/storage/... || echo "Benchmarks not yet available"
+          go test -short -cpuprofile=cpu.prof -bench=. -benchtime=2s ./internal/storage/...
+        continue-on-error: true
 
       - name: Run memory profiling
         run: |
-          go test -memprofile=mem.prof -bench=. -benchtime=10s ./internal/storage/... || echo "Benchmarks not yet available"
+          go test -short -memprofile=mem.prof -bench=. -benchtime=2s ./internal/storage/...
+        continue-on-error: true
 
       - name: Analyze profiles
         run: |
+          # Initialize the file
+          echo "# Profile Analysis" > profile_analysis.md
+          echo "" >> profile_analysis.md
+
           if [ -f cpu.prof ]; then
-            echo "## CPU Profile (Top 10)" > profile_analysis.md
+            echo "## CPU Profile (Top 10)" >> profile_analysis.md
             echo '```' >> profile_analysis.md
-            go tool pprof -text -top10 cpu.prof >> profile_analysis.md
+            go tool pprof -text -top10 cpu.prof >> profile_analysis.md || echo "Failed to analyze CPU profile" >> profile_analysis.md
             echo '```' >> profile_analysis.md
+            echo "" >> profile_analysis.md
+          else
+            echo "No CPU profile generated" >> profile_analysis.md
+            echo "" >> profile_analysis.md
           fi
 
           if [ -f mem.prof ]; then
-            echo "" >> profile_analysis.md
             echo "## Memory Profile (Top 10)" >> profile_analysis.md
             echo '```' >> profile_analysis.md
-            go tool pprof -text -top10 mem.prof >> profile_analysis.md
+            go tool pprof -text -top10 mem.prof >> profile_analysis.md || echo "Failed to analyze memory profile" >> profile_analysis.md
             echo '```' >> profile_analysis.md
+          else
+            echo "No memory profile generated" >> profile_analysis.md
           fi
 
       - name: Upload profiles

@@ -22,15 +22,15 @@ type Metrics struct {
 	ConnectionErrors  *prometheus.CounterVec
 
 	// Health metrics
-	HealthStatus      *prometheus.GaugeVec
-	ConnectionStatus  *prometheus.GaugeVec
-	ActiveWorkers     prometheus.Gauge
-	ActiveStreams     prometheus.Gauge
+	HealthStatus     *prometheus.GaugeVec
+	ConnectionStatus *prometheus.GaugeVec
+	ActiveWorkers    prometheus.Gauge
+	ActiveStreams    prometheus.Gauge
 
 	// Performance metrics
-	ApplyDuration     *prometheus.HistogramVec
-	StreamLatency     *prometheus.HistogramVec
-	BatchSize         *prometheus.HistogramVec
+	ApplyDuration *prometheus.HistogramVec
+	StreamLatency *prometheus.HistogramVec
+	BatchSize     *prometheus.HistogramVec
 }
 
 // NewMetrics creates a new Metrics instance with all replication metrics

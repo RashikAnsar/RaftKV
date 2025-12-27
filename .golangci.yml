@@ -1,13 +1,9 @@
-version: "2"
-
 run:
   timeout: 5m
 
 linters:
-  disable-all: true
   enable:
     - govet
-  # Explicitly disable problematic linters
   disable:
     - errcheck
     - staticcheck
@@ -16,27 +12,6 @@ linters:
 
 linters-settings:
   govet:
-    enable:
-      - assign
-      - atomic
-      - bools
-      - buildtag
-      - cgocall
-      - composites
-      - copylocks
-      - httpresponse
-      - loopclosure
-      - lostcancel
-      - nilfunc
-      - printf
-      - shift
-      - stdmethods
-      - structtag
-      - tests
-      - unmarshal
-      - unreachable
-      - unsafeptr
-      - unusedresult
     disable:
       - shadow
       - fieldalignment

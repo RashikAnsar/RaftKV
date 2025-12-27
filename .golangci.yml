@@ -12,12 +12,6 @@ linters:
     - unused
     - ineffassign
 
-linters-settings:
-  govet:
-    disable:
-      - shadow
-      - fieldalignment
-
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -91,60 +91,54 @@ func (s *StreamServer) StreamChanges(req *pb.StreamRequest, stream pb.Replicatio
 
 	// Stream events to client
 	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-
-		default:
-			// Receive event from subscriber
-			event, err := subscriber.Recv(ctx)
-			if err != nil {
-				if err == cdc.ErrSubscriberClosed || err == io.EOF {
-					return nil
-				}
-				if err == context.Canceled || err == context.DeadlineExceeded {
-					return err
-				}
-				s.logger.Error("Error receiving CDC event", zap.Error(err))
-				continue
+		// Recv blocks until an event is available or ctx is cancelled.
+		event, err := subscriber.Recv(ctx)
+		if err != nil {
+			if err == cdc.ErrSubscriberClosed || err == io.EOF {
+				return nil
 			}
-
-			// Skip events before requested index
-			if event.RaftIndex <= req.FromIndex {
-				continue
-			}
-
-			// Convert to protobuf message
-			pbEvent := &pb.ChangeEvent{
-				RaftIndex:    event.RaftIndex,
-				RaftTerm:     event.RaftTerm,
-				Operation:    event.Operation,
-				Key:          event.Key,
-				Value:        event.Value,
-				Timestamp:    timestamppb.New(event.Timestamp),
-				DatacenterId: event.DatacenterID,
-				SequenceNum:  event.SequenceNum,
-				VectorClock:  event.VectorClock,
-			}
-
-			// Send to client
-			if err := stream.Send(pbEvent); err != nil {
-				s.logger.Error("Failed to send event to client",
-					zap.String("client_dc", req.DatacenterId),
-					zap.Error(err),
-				)
+			if err == context.Canceled || err == context.DeadlineExceeded {
 				return err
 			}
+			s.logger.Error("Error receiving CDC event", zap.Error(err))
+			continue
+		}
 
-			activeStr.eventsSent++
+		// Skip events before requested index
+		if event.RaftIndex <= req.FromIndex {
+			continue
+		}
 
-			if activeStr.eventsSent%1000 == 0 {
-				s.logger.Debug("Stream progress",
-					zap.String("client_dc", req.DatacenterId),
-					zap.Uint64("events_sent", activeStr.eventsSent),
-					zap.Uint64("last_index", event.RaftIndex),
-				)
-			}
+		// Convert to protobuf message
+		pbEvent := &pb.ChangeEvent{
+			RaftIndex:    event.RaftIndex,
+			RaftTerm:     event.RaftTerm,
+			Operation:    event.Operation,
+			Key:          event.Key,
+			Value:        event.Value,
+			Timestamp:    timestamppb.New(event.Timestamp),
+			DatacenterId: event.DatacenterID,
+			SequenceNum:  event.SequenceNum,
+			VectorClock:  event.VectorClock,
+		}
+
+		// Send to client
+		if err := stream.Send(pbEvent); err != nil {
+			s.logger.Error("Failed to send event to client",
+				zap.String("client_dc", req.DatacenterId),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		activeStr.eventsSent++
+
+		if activeStr.eventsSent%1000 == 0 {
+			s.logger.Debug("Stream progress",
+				zap.String("client_dc", req.DatacenterId),
+				zap.Uint64("events_sent", activeStr.eventsSent),
+				zap.Uint64("last_index", event.RaftIndex),
+			)
 		}
 	}
 }

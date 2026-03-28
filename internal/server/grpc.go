@@ -331,8 +331,9 @@ func (s *GRPCServer) CompareAndSwap(ctx context.Context, req *pb.CompareAndSwapR
 		ExpectedVersion: req.ExpectedVersion,
 	}
 
-	// Apply through Raft
-	if err := s.raftNode.Apply(cmd, 5*time.Second); err != nil {
+	// Apply through Raft and get the actual CAS result
+	result, err := s.raftNode.ApplyWithResult(cmd, 5*time.Second)
+	if err != nil {
 		s.logger.Error("Failed to apply CAS command",
 			zap.String("key", req.Key),
 			zap.Uint64("expected_version", req.ExpectedVersion),
@@ -344,21 +345,18 @@ func (s *GRPCServer) CompareAndSwap(ctx context.Context, req *pb.CompareAndSwapR
 		}, status.Error(codes.Internal, "failed to replicate command")
 	}
 
-	// Read back the current version to confirm
-	_, currentVersion, err := s.raftNode.GetWithVersion(ctx, req.Key)
-	if err != nil {
-		// CAS was applied but we can't read it back - still return success
-		// since the operation was committed to Raft
+	casResult, ok := result.(*consensus.CASResult)
+	if !ok || !casResult.Success {
 		return &pb.CompareAndSwapResponse{
-			Success:        true,
-			CurrentVersion: req.ExpectedVersion + 1, // Assume version was incremented
-		}, nil
+			Success: false,
+			Error:   "version mismatch",
+		}, status.Error(codes.Aborted, "version mismatch")
 	}
 
 	leaderAddr, _ := s.raftNode.GetLeader()
 	return &pb.CompareAndSwapResponse{
 		Success:        true,
-		CurrentVersion: currentVersion,
+		CurrentVersion: casResult.Version,
 		Leader:         leaderAddr,
 	}, nil
 }

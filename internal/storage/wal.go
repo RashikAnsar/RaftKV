@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -54,12 +56,14 @@ type WAL struct {
 
 	maxSegmentSize int64 // Max size before rotation
 	syncOnWrite    bool  // Call fsync after each write
+	logger         *zap.Logger
 }
 
 type WALConfig struct {
 	Dir            string
 	MaxSegmentSize int64
-	SyncOnWrite    bool // true = durable, false = faster
+	SyncOnWrite    bool        // true = durable, false = faster
+	Logger         *zap.Logger // Optional structured logger (defaults to nop)
 }
 
 // NewWAL creates a new WAL instance
@@ -73,10 +77,16 @@ func NewWAL(config WALConfig) (*WAL, error) {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
 	}
 
+	logger := config.Logger
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	w := &WAL{
 		dir:            config.Dir,
 		maxSegmentSize: config.MaxSegmentSize,
 		syncOnWrite:    config.SyncOnWrite,
+		logger:         logger,
 	}
 
 	// Find the latest segment or create a new one
@@ -323,8 +333,11 @@ func (w *WAL) readSegment(index uint64) ([]*WALEntry, error) {
 			break
 		}
 		if err != nil {
-			// Log corruption but continue
-			fmt.Printf("WARNING: Corrupt entry in segment %d: %v\n", index, err)
+			w.logger.Error("corrupt WAL entry skipped",
+				zap.Uint64("segment", index),
+				zap.String("path", path),
+				zap.Error(err),
+			)
 			continue
 		}
 		entries = append(entries, entry)
@@ -530,8 +543,10 @@ func (w *WAL) CompactSegmentsBefore(beforeIndex uint64) (int, error) {
 		// Check if this segment only has old entries
 		maxRaftIndex, err := w.getMaxRaftIndexInSegment(segIndex)
 		if err != nil {
-			// If we can't read the segment, skip it
-			fmt.Printf("WARNING: Failed to read segment %d: %v\n", segIndex, err)
+			w.logger.Error("failed to read WAL segment during compaction, skipping",
+				zap.Uint64("segment_index", segIndex),
+				zap.Error(err),
+			)
 			continue
 		}
 
@@ -542,7 +557,11 @@ func (w *WAL) CompactSegmentsBefore(beforeIndex uint64) (int, error) {
 				return deletedCount, fmt.Errorf("failed to delete segment %d: %w", segIndex, err)
 			}
 			deletedCount++
-			fmt.Printf("Compacted WAL segment %d (max RaftIndex %d < %d)\n", segIndex, maxRaftIndex, beforeIndex)
+			w.logger.Debug("compacted WAL segment",
+				zap.Uint64("segment_index", segIndex),
+				zap.Uint64("max_raft_index", maxRaftIndex),
+				zap.Uint64("compact_before", beforeIndex),
+			)
 		}
 	}
 

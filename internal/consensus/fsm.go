@@ -18,6 +18,7 @@ const (
 	OpTypePut    = "put"
 	OpTypeDelete = "delete"
 	OpTypeCAS    = "cas"
+	OpTypeSetTTL = "set_ttl"
 )
 
 type Command struct {
@@ -63,6 +64,25 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 			zap.ByteString("data", log.Data),
 		)
 		return fmt.Errorf("failed to unmarshal command: %w", err)
+	}
+
+	// Handle set_ttl directly — it doesn't go through ApplyRaftEntry
+	if cmd.Op == OpTypeSetTTL {
+		ctx := context.Background()
+		if err := f.store.SetTTL(ctx, cmd.Key, cmd.TTL); err != nil {
+			f.logger.Error("Failed to apply set_ttl",
+				zap.String("key", cmd.Key),
+				zap.Uint64("index", log.Index),
+				zap.Error(err),
+			)
+			return err
+		}
+		f.logger.Debug("Applied set_ttl",
+			zap.String("key", cmd.Key),
+			zap.Duration("ttl", cmd.TTL),
+			zap.Uint64("index", log.Index),
+		)
+		return nil
 	}
 
 	// For CAS operations, encode the expected version into the value
@@ -149,6 +169,10 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 
 	data := make(map[string][]byte)
 	for _, key := range keys {
+		// Skip keys whose TTL has already expired
+		if remaining, err := f.store.GetTTL(ctx, key); err == nil && remaining < 0 {
+			continue
+		}
 		value, err := f.store.Get(ctx, key)
 		if err != nil {
 			continue

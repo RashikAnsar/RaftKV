@@ -142,8 +142,6 @@ func main() {
 		if err != nil {
 			logger.Fatal("Failed to create Raft node", zap.Error(err))
 		}
-		defer raftNode.Shutdown()
-
 		logger.Info("Raft node created",
 			zap.String("node_id", cfg.Raft.NodeID),
 			zap.String("raft_addr", cfg.Raft.RaftAddr),
@@ -181,6 +179,10 @@ func main() {
 		apiKeyManager = auth.NewAPIKeyManager(store)
 		jwtManager = auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.TokenExpiry)
 
+		if err := apiKeyManager.LoadCache(); err != nil {
+			logger.Fatal("Failed to load API key cache", zap.Error(err))
+		}
+
 		logger.Info("Authentication enabled",
 			zap.Duration("token_expiry", cfg.Auth.TokenExpiry),
 		)
@@ -199,8 +201,7 @@ func main() {
 			}
 			logger.Info("Created default admin user",
 				zap.String("username", "admin"),
-				zap.String("password", "admin"),
-				zap.String("warning", "Please change the default password!"),
+				zap.String("warning", "Please change the default password immediately!"),
 			)
 
 			// Generate admin API key if requested

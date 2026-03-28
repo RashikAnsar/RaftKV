@@ -92,23 +92,25 @@ func (m *APIKeyManager) GenerateAPIKey(userID, name string, role Role, expiresIn
 	return apiKey, nil
 }
 
-// ValidateAPIKey validates an API key and returns the associated key object
+// ValidateAPIKey validates an API key and returns the associated key object.
+// It checks the in-memory cache first (fast path) before falling back to a
+// full storage scan (slow path, used only when cache is empty).
 func (m *APIKeyManager) ValidateAPIKey(key string) (*APIKey, error) {
 	if key == "" {
 		return nil, fmt.Errorf("empty API key")
 	}
 
-	// List all API keys and check against them
-	// This is a simple implementation; in production, you'd use indexed lookups
-	keys, err := m.ListAPIKeys()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	// Fast path: check in-memory cache to avoid storage I/O on every request.
+	m.mu.RLock()
+	cachedKeys := make([]*APIKey, 0, len(m.cache))
+	for _, k := range m.cache {
+		cachedKeys = append(cachedKeys, k)
 	}
+	cachePopulated := len(m.cache) > 0
+	m.mu.RUnlock()
 
-	for _, apiKey := range keys {
-		// Check if the key matches the hash
+	for _, apiKey := range cachedKeys {
 		if err := bcrypt.CompareHashAndPassword([]byte(apiKey.KeyHash), []byte(key)); err == nil {
-			// Key matches - check if it's valid
 			if !apiKey.IsValid() {
 				if apiKey.Disabled {
 					return nil, fmt.Errorf("API key is disabled")
@@ -117,15 +119,42 @@ func (m *APIKeyManager) ValidateAPIKey(key string) (*APIKey, error) {
 					return nil, fmt.Errorf("API key has expired")
 				}
 			}
-
-			// Update last used timestamp
 			apiKey.LastUsed = time.Now()
 			apiKey.UpdatedAt = time.Now()
 			if err := m.storeAPIKey(apiKey); err != nil {
-				// Log error but don't fail validation
-				fmt.Printf("failed to update last used time: %v\n", err)
+				// Non-fatal: last-used update failure doesn't block access
+				_ = err
 			}
+			return apiKey, nil
+		}
+	}
 
+	// If cache was populated and no match found, the key is invalid.
+	if cachePopulated {
+		return nil, fmt.Errorf("invalid API key")
+	}
+
+	// Slow path: cache not loaded, fall back to full storage scan.
+	keys, err := m.ListAPIKeys()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list API keys: %w", err)
+	}
+
+	for _, apiKey := range keys {
+		if err := bcrypt.CompareHashAndPassword([]byte(apiKey.KeyHash), []byte(key)); err == nil {
+			if !apiKey.IsValid() {
+				if apiKey.Disabled {
+					return nil, fmt.Errorf("API key is disabled")
+				}
+				if apiKey.IsExpired() {
+					return nil, fmt.Errorf("API key has expired")
+				}
+			}
+			apiKey.LastUsed = time.Now()
+			apiKey.UpdatedAt = time.Now()
+			if err := m.storeAPIKey(apiKey); err != nil {
+				_ = err
+			}
 			return apiKey, nil
 		}
 	}

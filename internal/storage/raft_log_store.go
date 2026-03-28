@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"go.uber.org/zap"
 )
 
 // RaftLogStore implements raft.LogStore interface using append-only files
@@ -16,8 +17,9 @@ import (
 type RaftLogStore struct {
 	mu sync.RWMutex
 
-	dir  string
-	file *os.File // Current log file
+	dir    string
+	file   *os.File // Current log file
+	logger *zap.Logger
 
 	// In-memory index: log index -> file offset
 	index map[uint64]int64
@@ -58,9 +60,10 @@ func NewRaftLogStore(dir string) (*RaftLogStore, error) {
 	}
 
 	store := &RaftLogStore{
-		dir:   dir,
-		file:  file,
-		index: make(map[uint64]int64),
+		dir:    dir,
+		file:   file,
+		index:  make(map[uint64]int64),
+		logger: zap.NewNop(),
 	}
 
 	// Recover index from existing file
@@ -168,19 +171,28 @@ func (s *RaftLogStore) StoreLogs(logs []*raft.Log) error {
 	return nil
 }
 
-// DeleteRange deletes log entries in the range [min, max] inclusive
+// SetLogger sets the logger for the RaftLogStore.
+func (s *RaftLogStore) SetLogger(logger *zap.Logger) {
+	s.mu.Lock()
+	s.logger = logger
+	s.mu.Unlock()
+}
+
+// DeleteRange deletes log entries in the range [min, max] inclusive.
+// It triggers compaction when enough entries have been removed.
 func (s *RaftLogStore) DeleteRange(min, max uint64) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
-	// Remove from in-memory index
+	deletedCount := 0
 	for idx := min; idx <= max; idx++ {
-		delete(s.index, idx)
+		if _, exists := s.index[idx]; exists {
+			delete(s.index, idx)
+			deletedCount++
+		}
 	}
 
 	// Update first index
 	if min <= s.firstIdx && max >= s.firstIdx {
-		// Find new first index
 		s.firstIdx = max + 1
 		if s.firstIdx > s.lastIdx {
 			s.firstIdx = 0
@@ -188,9 +200,25 @@ func (s *RaftLogStore) DeleteRange(min, max uint64) error {
 		}
 	}
 
-	// Note: We don't actually delete from the file (append-only)
-	// The deleted entries are just removed from the index
-	// Compaction would be handled by log rotation/cleanup (TODO: future enhancement)
+	remainingCount := len(s.index)
+	s.mu.Unlock()
+
+	// Compact when a significant number of entries have been removed.
+	// The lock is released before CompactLog because it acquires the lock internally.
+	shouldCompact := deletedCount > 100 ||
+		(deletedCount > 0 && remainingCount > 0 && deletedCount*100/(deletedCount+remainingCount) > 20)
+
+	if shouldCompact {
+		if err := s.CompactLog(); err != nil {
+			s.logger.Error("raft log compaction failed after DeleteRange",
+				zap.Uint64("min", min),
+				zap.Uint64("max", max),
+				zap.Int("deleted", deletedCount),
+				zap.Error(err),
+			)
+			// Not fatal — compaction failure is not data loss; the in-memory index is still correct.
+		}
+	}
 
 	return nil
 }
@@ -311,8 +339,10 @@ func (s *RaftLogStore) recover() error {
 
 		// Validate that the full entry exists in the file
 		if offset+entrySize > fileSize {
-			// Incomplete entry at end of file - truncate here
-			fmt.Printf("Warning: Incomplete Raft log entry at offset %d, truncating\n", offset)
+			s.logger.Warn("incomplete Raft log entry at end of file, truncating",
+				zap.Int64("offset", offset),
+				zap.Int64("file_size", fileSize),
+			)
 			break
 		}
 
@@ -333,8 +363,11 @@ func (s *RaftLogStore) recover() error {
 
 	s.currentOffset = offset
 
-	fmt.Printf("Recovered %d Raft log entries (first: %d, last: %d)\n",
-		len(s.index), s.firstIdx, s.lastIdx)
+	s.logger.Info("recovered Raft log entries",
+		zap.Int("count", len(s.index)),
+		zap.Uint64("first_index", s.firstIdx),
+		zap.Uint64("last_index", s.lastIdx),
+	)
 
 	return nil
 }
@@ -445,7 +478,10 @@ func (s *RaftLogStore) CompactLog() error {
 	s.index = newIndex
 	s.currentOffset = newOffset
 
-	fmt.Printf("Raft log compacted: %d entries, %d bytes\n", len(newIndex), newOffset)
+	s.logger.Info("Raft log compacted",
+		zap.Int("entries", len(newIndex)),
+		zap.Int64("bytes", newOffset),
+	)
 
 	return nil
 }

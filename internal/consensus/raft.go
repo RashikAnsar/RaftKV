@@ -115,9 +115,14 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 
 		config.Logger.Info("TLS transport initialized for Raft (mutual TLS enabled)")
 	} else {
-		// Create standard TCP transport (unencrypted)
+		// Create standard TCP transport (unencrypted) with structured logger
 		config.Logger.Info("Setting up TCP transport for Raft (unencrypted)", zap.String("addr", config.RaftAddr))
-		transport, err = raft.NewTCPTransport(config.RaftAddr, addr, 3, 10*time.Second, os.Stderr)
+		tcpConfig := &raft.NetworkTransportConfig{
+			MaxPool: 3,
+			Timeout: 10 * time.Second,
+			Logger:  newHCLogger(config.Logger),
+		}
+		transport, err = raft.NewTCPTransportWithConfig(config.RaftAddr, addr, tcpConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create transport: %w", err)
 		}
@@ -128,6 +133,7 @@ func NewRaftNode(config RaftConfig) (*RaftNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create log store: %w", err)
 	}
+	logStore.SetLogger(config.Logger)
 
 	// Create custom Raft stable store (JSON-based)
 	stableStore, err := storage.NewRaftStableStore(config.RaftDir)
@@ -330,9 +336,9 @@ func (r *RaftNode) GetTTL(ctx context.Context, key string) (time.Duration, error
 	return r.fsm.store.GetTTL(ctx, key)
 }
 
-// SetTTL updates the TTL for an existing key
+// SetTTL updates the TTL for an existing key via Raft consensus
 func (r *RaftNode) SetTTL(ctx context.Context, key string, ttl time.Duration) error {
-	return r.fsm.store.SetTTL(ctx, key, ttl)
+	return r.Apply(Command{Op: OpTypeSetTTL, Key: key, TTL: ttl}, 5*time.Second)
 }
 
 // Stats returns store statistics
@@ -565,6 +571,8 @@ func (l *hcLogger) With(args ...interface{}) hclog.Logger                       
 func (l *hcLogger) Named(name string) hclog.Logger                               { return l }
 func (l *hcLogger) ResetNamed(name string) hclog.Logger                          { return l }
 func (l *hcLogger) SetLevel(level hclog.Level)                                   {}
-func (l *hcLogger) StandardLogger(opts *hclog.StandardLoggerOptions) *log.Logger { return nil }
+func (l *hcLogger) StandardLogger(opts *hclog.StandardLoggerOptions) *log.Logger {
+	return log.New(os.Stderr, "", log.LstdFlags)
+}
 func (l *hcLogger) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writer   { return os.Stderr }
 func (l *hcLogger) ImpliedArgs() []interface{}                                   { return nil }

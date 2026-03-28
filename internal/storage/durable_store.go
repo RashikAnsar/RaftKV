@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 type DurableStore struct {
@@ -16,6 +18,7 @@ type DurableStore struct {
 	batchedWAL      *BatchedWAL // Optional batched WAL wrapper
 	snapshotManager *SnapshotManager
 	config          DurableStoreConfig // Store config for compaction settings
+	logger          *zap.Logger
 
 	snapshotEvery    int         // Take snapshot every N operations (0 = disabled)
 	opsSinceSnapshot int         // Operations since last snapshot
@@ -32,6 +35,7 @@ type DurableStoreConfig struct {
 	SyncOnWrite   bool        // true = durable but slower, false = faster but risk data loss
 	SnapshotEvery int         // Take snapshot every N operations (0 = disabled)
 	BatchConfig   BatchConfig // Batching configuration (optional, improves write throughput)
+	Logger        *zap.Logger // Optional structured logger (defaults to nop)
 
 	// Compaction settings
 	CompactionEnabled bool   // Enable WAL compaction after snapshots
@@ -55,10 +59,16 @@ func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 		config.BatchConfig = DefaultBatchConfig()
 	}
 
+	logger := config.Logger
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	// Create WAL
 	wal, err := NewWAL(WALConfig{
 		Dir:         config.DataDir,
 		SyncOnWrite: config.SyncOnWrite,
+		Logger:      logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create WAL: %w", err)
@@ -84,6 +94,7 @@ func NewDurableStore(config DurableStoreConfig) (*DurableStore, error) {
 		snapshotManager: snapshotManager,
 		config:          config, // Store config for compaction
 		snapshotEvery:   config.SnapshotEvery,
+		logger:          logger,
 	}
 
 	// Recover from snapshot + WAL
@@ -213,11 +224,7 @@ func (s *DurableStore) recover() error {
 		}
 	}
 
-	if appliedCount > 0 {
-		if appliedCount > 0 {
-			// fmt.Printf("Replayed %d WAL entries after snapshot\n", appliedCount)
-		}
-	}
+	_ = appliedCount // replayed entries tracked internally
 
 	s.opsSinceSnapshot = 0
 
@@ -249,9 +256,9 @@ func (s *DurableStore) Put(ctx context.Context, key string, value []byte) error 
 	}
 
 	if err := s.memory.Put(ctx, key, value); err != nil {
-		// This is a critical error - WAL and memory are out of sync
-		// TODO: in production handle it as per requirements
-		return fmt.Errorf("failed to apply to memory after WAL write: %w", err)
+		// WAL write succeeded but memory update failed — state is permanently inconsistent.
+		// The in-memory map Put should never fail; if it does, something is catastrophically wrong.
+		panic(fmt.Sprintf("invariant violation: WAL write succeeded but memory Put failed for key %q: %v", key, err))
 	}
 
 	s.mu.Lock()
@@ -298,7 +305,7 @@ func (s *DurableStore) PutWithTTL(ctx context.Context, key string, value []byte,
 
 	// Apply with TTL to memory store
 	if err := s.memory.PutWithTTL(ctx, key, value, ttl); err != nil {
-		return fmt.Errorf("failed to apply to memory after WAL write: %w", err)
+		panic(fmt.Sprintf("invariant violation: WAL write succeeded but memory PutWithTTL failed for key %q: %v", key, err))
 	}
 
 	s.mu.Lock()
@@ -393,12 +400,9 @@ func (s *DurableStore) Snapshot(ctx context.Context) (string, error) {
 }
 
 func (s *DurableStore) takeSnapshot() {
-	_, err := s.takeSnapshotSync()
-	if err != nil {
-		// fmt.Printf("ERROR: Failed to create snapshot: %v\n", err)
-		return
+	if _, err := s.takeSnapshotSync(); err != nil {
+		s.logger.Error("failed to create snapshot", zap.Error(err))
 	}
-	// fmt.Printf("Snapshot created: %s\n", path)
 }
 
 func (s *DurableStore) takeSnapshotSync() (string, error) {
@@ -439,12 +443,11 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 
 	// Clean up old snapshots (keep last 3)
 	if err := s.snapshotManager.DeleteOldSnapshots(3); err != nil {
-		// fmt.Printf("WARNING: Failed to delete old snapshots: %v\n", err)
+		s.logger.Warn("failed to delete old snapshots", zap.Error(err))
 	}
 
 	// Compact WAL after snapshot (if enabled)
 	if s.config.CompactionEnabled && raftIndex > 0 {
-		// Keep a safety margin before the snapshot
 		compactBefore := raftIndex
 		if raftIndex > s.config.CompactionMargin {
 			compactBefore = raftIndex - s.config.CompactionMargin
@@ -452,9 +455,12 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 
 		deletedCount, err := s.wal.CompactSegmentsBefore(compactBefore)
 		if err != nil {
-			// fmt.Printf("WARNING: Failed to compact WAL: %v\n", err)
+			s.logger.Warn("failed to compact WAL", zap.Error(err))
 		} else if deletedCount > 0 {
-			// fmt.Printf("WAL compacted: deleted %d segments (before RaftIndex %d)\n", deletedCount, compactBefore)
+			s.logger.Debug("WAL compacted",
+				zap.Int("deleted_segments", deletedCount),
+				zap.Uint64("compact_before_raft_index", compactBefore),
+			)
 		}
 	}
 
@@ -462,8 +468,10 @@ func (s *DurableStore) takeSnapshotSync() (string, error) {
 	if s.config.MaxWALSegments > 0 {
 		segmentCount, _ := s.wal.GetSegmentCount()
 		if segmentCount > s.config.MaxWALSegments {
-			// fmt.Printf("WARNING: WAL has %d segments (max: %d). Consider triggering snapshot.\n",
-			// 	segmentCount, s.config.MaxWALSegments)
+			s.logger.Warn("WAL segment count exceeds maximum",
+				zap.Int("segment_count", segmentCount),
+				zap.Int("max_segments", s.config.MaxWALSegments),
+			)
 		}
 	}
 

@@ -19,11 +19,12 @@ import (
 
 // RaftHTTPServer is an HTTP server that integrates with Raft consensus
 type RaftHTTPServer struct {
-	raft    *consensus.RaftNode
-	router  *mux.Router
-	server  *http.Server
-	logger  *observability.Logger
-	metrics *observability.Metrics
+	raft         *consensus.RaftNode
+	router       *mux.Router
+	server       *http.Server
+	logger       *observability.Logger
+	metrics      *observability.Metrics
+	clusterToken string
 
 	// TLS configuration
 	tlsEnabled bool
@@ -43,6 +44,10 @@ type RaftHTTPServerConfig struct {
 	EnableRateLimit bool
 	RateLimit       int
 
+	// ClusterToken is a shared secret required for cluster management endpoints
+	// (join/remove). Leave empty to disable the check (not recommended in production).
+	ClusterToken string
+
 	// TLS configuration
 	TLSConfig *security.TLSConfig // Optional TLS config (nil = HTTP, non-nil = HTTPS)
 }
@@ -61,9 +66,10 @@ func NewRaftHTTPServer(config RaftHTTPServerConfig) *RaftHTTPServer {
 	}
 
 	srv := &RaftHTTPServer{
-		raft:    config.RaftNode,
-		logger:  config.Logger,
-		metrics: config.Metrics,
+		raft:         config.RaftNode,
+		logger:       config.Logger,
+		metrics:      config.Metrics,
+		clusterToken: config.ClusterToken,
 	}
 
 	// Create router
@@ -141,6 +147,21 @@ func (s *RaftHTTPServer) registerRoutes(router *mux.Router, maxRequestSize int64
 
 	// Root
 	router.HandleFunc("/", s.handleRoot).Methods(http.MethodGet, http.MethodOptions)
+}
+
+// checkClusterToken validates the Authorization: Bearer header for cluster management endpoints.
+// Returns true if the request is allowed to proceed, false if rejected (response already written).
+func (s *RaftHTTPServer) checkClusterToken(w http.ResponseWriter, r *http.Request) bool {
+	if s.clusterToken == "" {
+		return true // No token configured — allow (warn at startup in production)
+	}
+	const prefix = "Bearer "
+	auth := r.Header.Get("Authorization")
+	if len(auth) <= len(prefix) || auth[:len(prefix)] != prefix || auth[len(prefix):] != s.clusterToken {
+		s.respondError(w, http.StatusUnauthorized, "missing or invalid cluster token")
+		return false
+	}
+	return true
 }
 
 // limitRequestSize middleware limits request body size
@@ -346,7 +367,7 @@ func (s *RaftHTTPServer) handleCAS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply CAS command through Raft
+	// Apply CAS command through Raft and get the actual result
 	cmd := consensus.Command{
 		Op:              consensus.OpTypeCAS,
 		Key:             key,
@@ -354,7 +375,8 @@ func (s *RaftHTTPServer) handleCAS(w http.ResponseWriter, r *http.Request) {
 		ExpectedVersion: req.ExpectedVersion,
 	}
 
-	if err := s.raft.Apply(cmd, 5*time.Second); err != nil {
+	result, err := s.raft.ApplyWithResult(cmd, 5*time.Second)
+	if err != nil {
 		s.logger.Error("Failed to apply CAS command",
 			zap.String("key", key),
 			zap.Uint64("expected_version", req.ExpectedVersion),
@@ -364,14 +386,22 @@ func (s *RaftHTTPServer) handleCAS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// CAS was applied - now check if it succeeded by reading the current version
-	// Note: In a production system, the Apply should return the result
-	// For now, we'll return success (the CAS operation was replicated)
+	casResult, ok := result.(*consensus.CASResult)
+	if !ok || !casResult.Success {
+		leaderAddr, _ := s.raft.GetLeader()
+		w.Header().Set("X-Raft-Leader", leaderAddr)
+		s.respondJSON(w, http.StatusConflict, map[string]interface{}{
+			"success": false,
+			"message": "version mismatch",
+		})
+		return
+	}
+
 	leaderAddr, _ := s.raft.GetLeader()
 	w.Header().Set("X-Raft-Leader", leaderAddr)
 	s.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
-		"message": "CAS operation replicated",
+		"version": casResult.Version,
 	})
 }
 
@@ -408,6 +438,9 @@ func (s *RaftHTTPServer) handleGetVersion(w http.ResponseWriter, r *http.Request
 
 // handleJoin adds a new node to the cluster
 func (s *RaftHTTPServer) handleJoin(w http.ResponseWriter, r *http.Request) {
+	if !s.checkClusterToken(w, r) {
+		return
+	}
 	// Only leader can add nodes
 	if !s.raft.IsLeader() {
 		leaderAddr, _ := s.raft.GetLeader()
@@ -452,6 +485,9 @@ func (s *RaftHTTPServer) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 // handleRemove removes a node from the cluster
 func (s *RaftHTTPServer) handleRemove(w http.ResponseWriter, r *http.Request) {
+	if !s.checkClusterToken(w, r) {
+		return
+	}
 	// Only leader can remove nodes
 	if !s.raft.IsLeader() {
 		leaderAddr, _ := s.raft.GetLeader()
